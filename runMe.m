@@ -13,7 +13,7 @@ subject = ieeg_recon;
 
 disp(subject)
 
-subject.preImplantMR = 'exampleData/sub-RID0922/ses-clinical01/anat/sub-RID0922_ses-clinical01_acq-3D_space-T00mri_T1w.nii.gz';
+subject.preImplantMRI = 'exampleData/sub-RID0922/ses-clinical01/anat/sub-RID0922_ses-clinical01_acq-3D_space-T00mri_T1w.nii.gz';
 subject.postImplantCT = 'exampleData/sub-RID0922/ses-clinical01/ct/sub-RID0922_ses-clinical01_acq-3D_space-T01ct_ct.nii.gz';
 subject.postImplantCT_electrodes = 'exampleData/sub-RID0922/ses-clinical01/ieeg/sub-RID0922_ses-clinical01_space-T01ct_desc-vox_electrodes.txt';
 subject.output = 'exampleData/sub-RID0922/derivatives';
