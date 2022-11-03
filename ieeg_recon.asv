@@ -206,7 +206,7 @@ classdef ieeg_recon
             electrodes2ROI.Properties.VariableNames(8) = "roi";
             electrodes2ROI.Properties.VariableNames(9) = "roiNum";
 
-            writetable(electrodes2ROI, [obj.output, '/ieeg_recon/module3/electrodes2ROI.csv'])
+            writetable()
 
         end
 
