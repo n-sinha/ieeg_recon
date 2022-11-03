@@ -30,4 +30,4 @@ subject.module2
 atlas = '/Users/nishant/Dropbox/Database/UPenn/Epilepsy/BIDS/derivatives/t3_freesurfer/sub-RID0031/mri/aparc+aseg.nii.gz';
 lookupTable = 'atlas_lookuptable/desikanKilliany.csv';
  
-subject.module3()
+subject.module3(atlas,lookupTable)
