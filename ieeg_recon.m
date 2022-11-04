@@ -140,7 +140,7 @@ classdef ieeg_recon
 
         end
 
-        function module3(obj, atlas, lookupTable)
+        function electrodes2ROI = module3(obj, atlas, lookupTable)
             %module3: Outputs of this module goes in
             %output:ieeg_recon/module3 folder
 
