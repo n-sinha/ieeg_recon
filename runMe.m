@@ -11,10 +11,10 @@ subject = ieeg_recon;
 % postImplantCT_electrodes, and FOLDERS: output, and fslLoc in any object
 % belonging to the class ieeg_recon
 
-subject.preImplantMRI = '/Users/nishant/Dropbox/Database/UPenn/Epilepsy/BIDS/derivatives/t3_freesurfer/sub-RID0031/mri/T1.nii.gz';
-subject.postImplantCT = '/Users/nishant/Dropbox/Database/UPenn/Epilepsy/BIDS/derivatives/t3_freesurfer/sub-RID0031/CT/native/CT.nii.gz';
-subject.postImplantCT_electrodes = '/Users/nishant/Dropbox/Database/UPenn/Epilepsy/BIDS/derivatives/t3_freesurfer/sub-RID0031/CT/native/electrodes_inCTcrs.txt';
-subject.output = '/Users/nishant/Dropbox/Database/UPenn/Epilepsy/BIDS/derivatives/t3_freesurfer/sub-RID0031';
+subject.preImplantMRI = 'exampleData/sub-RID0922/ses-clinical01/anat/sub-RID0922_ses-clinical01_acq-3D_space-T00mri_T1w.nii.gz';
+subject.postImplantCT = 'exampleData/sub-RID0922/ses-clinical01/ct/sub-RID0922_ses-clinical01_acq-3D_space-T01ct_ct.nii.gz';
+subject.postImplantCT_electrodes = 'exampleData/sub-RID0922/ses-clinical01/ieeg/sub-RID0922_ses-clinical01_space-T01ct_desc-vox_electrodes.txt';
+subject.output = 'exampleData/sub-RID0922/derivatives';
 subject.fslLoc = '/usr/local/fsl/bin';
 
 %% Run Module 1
@@ -27,7 +27,7 @@ subject.module2
 
 %% Run Module 3
 
-atlas = '/Users/nishant/Dropbox/Database/UPenn/Epilepsy/BIDS/derivatives/t3_freesurfer/sub-RID0031/mri/aparc+aseg.nii.gz';
+atlas = 'exampleData/sub-RID0922/derivatives/freesurfer/mri/aparc+aseg.nii.gz';
 lookupTable = 'atlas_lookuptable/desikanKilliany.csv';
  
-subject.module3(atlas, lookupTable)
+electrodes = subject.module3(atlas, lookupTable);
