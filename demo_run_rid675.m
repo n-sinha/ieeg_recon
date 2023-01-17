@@ -1,34 +1,24 @@
 clc
 clear
 close all
+warning off
 
 %% Make ieeg_recon object
 
-subject = ieeg_recon;
+subject_rid675 = ieeg_recon;
 
-% by default the ieeg_recon object points to example data. This can be
-% changed by setting the location of FILES: preImplantMRI, postImplantCT,
-% postImplantCT_electrodes, and FOLDERS: output, and fslLoc in any object
-% belonging to the class ieeg_recon
-
-subject.preImplantMRI = 'exampleData/sub-RID0675/ses-clinical01/anat/sub-RID0675_ses-clinical01_acq-3D_space-T00mri_T1w.nii.gz';
-subject.postImplantCT = 'exampleData/sub-RID0675/ses-clinical01/ct/sub-RID0675_ses-clinical01_acq-3D_space-T01ct_ct.nii.gz';
-subject.postImplantCT_electrodes = 'exampleData/sub-RID0675/ses-clinical01/ieeg/sub-RID0675_ses-clinical01_space-T01ct_desc-vox_electrodes.txt';
-subject.output = 'exampleData/sub-RID0675/derivatives';
-subject.fslLoc = '/usr/local/fsl/bin';
-subject.itksnap = '/Applications/ITK-SNAP.app/Contents/bin';
+subject_rid675.preImplantMRI = 'exampleData/sub-RID0675/ses-clinical01/anat/sub-RID0675_ses-clinical01_acq-3D_space-T00mri_T1w.nii.gz';
+subject_rid675.postImplantCT = 'exampleData/sub-RID0675/ses-clinical01/ct/sub-RID0675_ses-clinical01_acq-3D_space-T01ct_ct.nii.gz';
+subject_rid675.postImplantCT_electrodes = 'exampleData/sub-RID0675/ses-clinical01/ieeg/sub-RID0675_ses-clinical01_space-T01ct_desc-vox_electrodes.txt';
+subject_rid675.output = 'exampleData/sub-RID0675/derivatives';
+subject_rid675.fslLoc = '/usr/local/fsl/bin';
+subject_rid675.itksnap = '/Applications/ITK-SNAP.app/Contents/bin';
 
 %% Run Module 1
 
-subject.module1
+subject_rid675.module1;
 
 %% Run Module 2
 
-subject.module2
+fileLocations = subject_rid675.module2;
 
-%% Run Module 3
-
-atlas = 'exampleData/sub-RID0922/derivatives/freesurfer/mri/aparc+aseg.nii.gz';
-lookupTable = 'atlas_lookuptable/desikanKilliany.csv';
- 
-electrodes = subject.module3(atlas, lookupTable);

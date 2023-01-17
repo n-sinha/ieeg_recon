@@ -43,7 +43,7 @@ classdef ieeg_recon
 
         end
 
-        function module2(obj)
+        function fileLocations = module2(obj)
             %module2: Outputs of this module goes in
             %output:ieeg_recon/module2 folder
 
@@ -57,10 +57,15 @@ classdef ieeg_recon
                 mustBeFile(fullfile(obj.output, 'ieeg_recon/module2/ct_to_mri_xform.txt'));
                 mustBeFile(fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRImm.txt'));
                 mustBeFile(fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRIvox.txt'));
-                mustBeFile(fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRIvox.txt'));
                 mustBeFile(fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRI.nii.gz'));
                 mustBeFile(fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRI_freesurferLUT.txt'));
-               
+
+                fileLocations.ct_to_mri = fullfile(obj.output, 'ieeg_recon/module2/ct_to_mri.nii.gz');
+                fileLocations.electrodes_inMRI = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRI.nii.gz');
+                fileLocations.electrodes_inMRI_freesurferLUT = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRI_freesurferLUT.txt');
+                fileLocations.electrodes_inMRImm = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRImm.txt');
+                fileLocations.electrodes_inMRIvox = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRIvox.txt');
+                    
             catch
 
                 % remove negative values from CT image
@@ -187,6 +192,13 @@ classdef ieeg_recon
             end
 
             %% To DO: Export a sanpshot of CT over MRI to check registration quality
+
+            fileLocations.ct_to_mri = fullfile(obj.output, 'ieeg_recon/module2/ct_to_mri.nii.gz');
+            fileLocations.electrodes_inMRI = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRI.nii.gz');
+            fileLocations.electrodes_inMRI_freesurferLUT = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRI_freesurferLUT.txt');
+            fileLocations.electrodes_inMRImm = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRImm.txt');
+            fileLocations.electrodes_inMRIvox = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRIvox.txt');
+          
 
         end
 
