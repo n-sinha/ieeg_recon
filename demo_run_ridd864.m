@@ -12,6 +12,7 @@ subject_rid864.postImplantCT_electrodes = 'exampleData/sub-RID0864/ses-clinical0
 subject_rid864.output = 'exampleData/sub-RID0864/derivatives';
 subject_rid864.fslLoc = '/usr/local/fsl/bin';
 subject_rid864.itksnap = '/Applications/ITK-SNAP.app/Contents/bin';
+subject_rid864.freeSurfer = '/Applications/freesurfer/7.3.2/bin';
 
 %% Run Module 1
 
@@ -20,3 +21,8 @@ subject_rid864.module1
 %% Run Module 2
 
 fileLocations = subject_rid864.module2;
+
+%% Run Module 2 QualityAssurance
+snapshot = 1;
+subject_rid864.module2_QualityAssuranceFreeSurfer(fileLocations,snapshot);
+
