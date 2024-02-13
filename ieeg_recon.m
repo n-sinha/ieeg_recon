@@ -11,6 +11,7 @@ classdef ieeg_recon
         fslLoc
         itksnap
         freeSurfer
+        freeSurferDir
     end
 
     methods
@@ -51,8 +52,8 @@ classdef ieeg_recon
             config_iEEGrecon;
             mkdir(obj.output, 'ieeg_recon/module2');
 
-            try 
-                
+            try
+
                 assert(varargin{2});
 
                 mustBeFile(fullfile(obj.output, 'ieeg_recon/module2/ct_thresholded.nii.gz'));
@@ -79,7 +80,7 @@ classdef ieeg_recon
 
                 % Greedy Image Centering: Apply greedy with image centering
                 if matches(varargin{1}, 'gc')
-                    
+
                     disp('Running greedy registration with image centering');
                     cmd = [obj.itksnap '/greedy' ...
                         ' -d 3' ...
@@ -118,7 +119,7 @@ classdef ieeg_recon
                     system(cmd, "-echo");
 
                 elseif matches(varargin{1}, 'g')
-                    
+
                     disp('Running FLIRT registration fine-tuned with greedy');
                     % FLIRT: Register CT to preimapnt T1 MRI
                     cmd = [obj.fslLoc '/flirt' ...
@@ -171,7 +172,7 @@ classdef ieeg_recon
                         ' ' fullfile(obj.output, 'ieeg_recon/module2/ct_to_mri_flirt.txt')];
 
                     system(cmd, "-echo");
-  
+
                     % Apply combined registration to CT
                     % replace flirt ct_to_mri with new ct_to_mri
                     cmd = [obj.fslLoc '/flirt' ...
@@ -184,7 +185,7 @@ classdef ieeg_recon
                     system(cmd, "-echo");
 
                 elseif matches(varargin{1}, 'gc_noCTthereshold')
-                    
+
                     disp('Running greedy registration with image centering');
                     cmd = [obj.itksnap '/greedy' ...
                         ' -d 3' ...
@@ -192,7 +193,7 @@ classdef ieeg_recon
                         ' ' obj.postImplantCT ...
                         ' -o ' fullfile(obj.output, 'ieeg_recon/module2/ct_to_mri.mat') ...
                         ' -a -dof 6' ...
-                        ' -m MI' ...
+                        ' -m NMI' ...
                         ' -ia-image-centers' ...
                         ' -n 100x50x0x0' ...
                         ' >' fullfile(obj.output, 'ieeg_recon/module2/greedy.log')];
@@ -297,7 +298,7 @@ classdef ieeg_recon
                 fileLocations.electrodes_inMRI_freesurferLUT = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRI_freesurferLUT.txt');
                 fileLocations.electrodes_inMRImm = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRImm.txt');
                 fileLocations.electrodes_inMRIvox = fullfile(obj.output, 'ieeg_recon/module2/electrodes_inMRIvox.txt');
-            end            
+            end
         end
 
         function module2_QualityAssurance(obj,fileLocations,imageviewer)
@@ -361,7 +362,7 @@ classdef ieeg_recon
 
             else
 
-                 error("Imageviewer missing. Specify: 'itksnap', 'freeview', or 'freeview_snapshot' ")
+                error("Imageviewer missing. Specify: 'itksnap', 'freeview', or 'freeview_snapshot' ")
 
             end
 
@@ -371,70 +372,133 @@ classdef ieeg_recon
             %module3: Outputs of this module goes in
             %output:ieeg_recon/module3 folder
 
-            config_iEEGrecon;
-            mkdir(obj.output, 'ieeg_recon/module3');
+            try
 
-            mustBeFile(atlas);
-            mustBeFile(lookupTable);
+                electrodes2ROI = [obj.output, '/ieeg_recon/module3/electrodes2ROI.csv'];
+                mustBeFile(electrodes2ROI)
 
-            %% Load electrode coordinates in mm, and read atlas in native space from nifti file
+            catch
 
-            electrodes_mm = importdata([obj.output '/ieeg_recon/module2/electrodes_inMRImm.txt']);
-            electrodes_mm = electrodes_mm.data;
+                config_iEEGrecon;
+                mkdir(obj.output, 'ieeg_recon/module3');
 
-            electrodes_vox = importdata([obj.output '/ieeg_recon/module2/electrodes_inMRIvox.txt']);
-            electrodes_vox = electrodes_vox.data;
+                mustBeFile(atlas);
+                mustBeFile(lookupTable);
 
-            labels = importdata([obj.output '/ieeg_recon/module1/electrode_names.txt']);
+                %% Load electrode coordinates in mm, and read atlas in native space from nifti file
 
-            hdr = niftiinfo(atlas);
-            data = niftiread(atlas);
-            lut = readtable(lookupTable);
+                electrodes_mm = importdata([obj.output '/ieeg_recon/module2/electrodes_inMRImm.txt']);
+                electrodes_mm = electrodes_mm.data;
 
-            %% Atlas roi in voxels
-            atlas_voxels = [];
+                electrodes_vox = importdata([obj.output '/ieeg_recon/module2/electrodes_inMRIvox.txt']);
+                electrodes_vox = electrodes_vox.data;
 
-            for r = 1:size(lut, 1)
+                labels = importdata([obj.output '/ieeg_recon/module1/electrode_names.txt']);
 
-                [vox(:, 1), vox(:, 2), vox(:, 3)] = ind2sub(size(data), find(data == lut.roiNum(r)));
-                vox(:, 4) = repmat(lut.roiNum(r), size(vox, 1), 1);
-                atlas_voxels = [atlas_voxels; vox];
-                clear vox
+                hdr = niftiinfo(atlas);
+                data = niftiread(atlas);
+                lut = readtable(lookupTable);
+                
+                tk_ras = vox2ras_0to1(vox2ras_tkreg(hdr.ImageSize, hdr.PixelDimensions));     
+                electrodes_surfmm = tk_ras*[electrodes_vox , ones(size(electrodes_vox,1),1)]';
+                electrodes_surfmm = single(electrodes_surfmm(1:3,:)');
+
+                %% Atlas roi in voxels
+                atlas_voxels = [];
+
+                for r = 1:size(lut, 1)
+
+                    [vox(:, 1), vox(:, 2), vox(:, 3)] = ind2sub(size(data), find(data == lut.roiNum(r)));
+                    vox(:, 4) = repmat(lut.roiNum(r), size(vox, 1), 1);
+                    atlas_voxels = [atlas_voxels; vox];
+                    clear vox
+
+                end
+
+                %% Atlas roi in mm
+                cord_mm = hdr.Transform.T' * [atlas_voxels(:, 1:3), ones(size(atlas_voxels, 1), 1)]';
+                cord_mm = transpose(cord_mm);
+                cord_mm = [cord_mm(:, 1:3), atlas_voxels(:, 4)];
+
+
+                %% Map electrode contacts to all ROI
+
+                [idx, dist_mm] = knnsearch(cord_mm(:, 1:3), electrodes_mm, 'K', 1);
+                implant2roiNum = cord_mm(idx, 4);
+                [~, idx] = ismember(implant2roiNum, lut.roiNum);
+                implant2roi = lut.roi(idx);
+
+                % if an electrode is not within 2.5mm of any ROI it is in the white matter
+                % or outside the brain
+                implant2roiNum(dist_mm >= 2.6) = nan;
+                [implant2roi{dist_mm >= 2.6, :}] = deal('');
+
+
+                % Find contacts outside the brain
+                electrodes_surf_outwm =  [electrodes_surfmm(dist_mm >= 2.6,:), find(dist_mm >= 2.6)];
+
+                [lpv, lpf] = read_surf([obj.freeSurferDir '/surf/lh.pial']);
+                [lwv, lwf] = read_surf([obj.freeSurferDir '/surf/lh.white']);
+
+                [rpv, rpf] = read_surf([obj.freeSurferDir '/surf/rh.pial']);
+                [rwv, rwf] = read_surf([obj.freeSurferDir '/surf/rh.white']);
+
+                % find if elecs are outside of GM surface
+                lGM.faces=lpf+1;
+                lGM.vertices=lpv;
+                in_left = inpolyhedron(lGM,electrodes_surf_outwm(:,1:3)); % for left
+                rGM.faces=rpf+1;
+                rGM.vertices=rpv;
+                in_right = inpolyhedron(rGM,electrodes_surf_outwm(:,1:3)); % for right
+
+                out=~in_left & ~in_right;
+                ousidebrain=electrodes_surf_outwm(out,4);
+                [implant2roi{ousidebrain}] = deal('outside-brain');
+
+                wmcontacts = electrodes_surf_outwm(~out,4);
+                [implant2roi{wmcontacts}] = deal('white-matter');
+
+                % sanity check wm contacts
+
+                 % find if elecs are inside of WM surface
+                lWM.faces=lwf+1;
+                lWM.vertices=lwv;
+                in_left = inpolyhedron(lWM,electrodes_surfmm(wmcontacts,:)); % for left
+                rWM.faces=rwf+1;
+                rWM.vertices=rwv;
+                in_right = inpolyhedron(rWM,electrodes_surfmm(wmcontacts,:)); % for right
+                inWM= or(in_left, in_right);
+                
+                if sum(inWM) == numel(wmcontacts)
+                    disp('white-matter contacts correctly assigned')
+                else
+                    display( ['check white-matter contacts in: ' fileparts(subject.output)])
+                end
+
+
+                electrodes2ROI = table(labels, ...
+                    electrodes_mm(:, 1), electrodes_mm(:, 2), electrodes_mm(:, 3), ...
+                    electrodes_surfmm(:, 1), electrodes_surfmm(:, 2), electrodes_surfmm(:, 3), ...
+                    electrodes_vox(:, 1), electrodes_vox(:, 2), electrodes_vox(:, 3), ...
+                    implant2roi, implant2roiNum);
+
+                electrodes2ROI.Properties.VariableNames(2) = "mm_x";
+                electrodes2ROI.Properties.VariableNames(3) = "mm_y";
+                electrodes2ROI.Properties.VariableNames(4) = "mm_z";
+
+                electrodes2ROI.Properties.VariableNames(5) = "surfmm_x";
+                electrodes2ROI.Properties.VariableNames(6) = "surfmm_y";
+                electrodes2ROI.Properties.VariableNames(7) = "surfmm_z";
+                
+                electrodes2ROI.Properties.VariableNames(8) = "vox_x";
+                electrodes2ROI.Properties.VariableNames(9) = "vox_y";
+                electrodes2ROI.Properties.VariableNames(10) = "vox_z";
+                electrodes2ROI.Properties.VariableNames(11) = "roi";
+                electrodes2ROI.Properties.VariableNames(12) = "roiNum";
+
+                writetable(electrodes2ROI, [obj.output, '/ieeg_recon/module3/electrodes2ROI.csv'])
 
             end
-
-            %% Atlas roi in mm
-            cord_mm = hdr.Transform.T' * [atlas_voxels(:, 1:3), ones(size(atlas_voxels, 1), 1)]';
-            cord_mm = transpose(cord_mm);
-            cord_mm = [cord_mm(:, 1:3), atlas_voxels(:, 4)];
-
-            %% Map electrode contacts to all ROI
-
-            [idx, dist_mm] = knnsearch(cord_mm(:, 1:3), electrodes_mm, 'K', 1);
-            implant2roiNum = cord_mm(idx, 4);
-            [~, idx] = ismember(implant2roiNum, lut.roiNum);
-            implant2roi = lut.roi(idx);
-
-            % if an electrode is not within 2.5mm of any ROI it is in the white matter
-            % or outside the brain
-            implant2roiNum(dist_mm >= 2.6) = nan;
-            [implant2roi{dist_mm >= 2.6, :}] = deal('');
-
-            electrodes2ROI = table(labels, ...
-                electrodes_mm(:, 1), electrodes_mm(:, 2), electrodes_mm(:, 3), ...
-                electrodes_vox(:, 1), electrodes_vox(:, 2), electrodes_vox(:, 3), ...
-                implant2roi, implant2roiNum);
-
-            electrodes2ROI.Properties.VariableNames(2) = "mm_x";
-            electrodes2ROI.Properties.VariableNames(3) = "mm_y";
-            electrodes2ROI.Properties.VariableNames(4) = "mm_z";
-            electrodes2ROI.Properties.VariableNames(5) = "vox_x";
-            electrodes2ROI.Properties.VariableNames(6) = "vox_y";
-            electrodes2ROI.Properties.VariableNames(7) = "vox_z";
-            electrodes2ROI.Properties.VariableNames(8) = "roi";
-            electrodes2ROI.Properties.VariableNames(9) = "roiNum";
-
-            writetable(electrodes2ROI, [obj.output, '/ieeg_recon/module3/electrodes2ROI.csv'])
 
         end
 

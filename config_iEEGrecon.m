@@ -1,6 +1,7 @@
 %% Set external library in path
 
-addpath(genpath('external_lib'))
+addpath(genpath('/Users/nishant/Dropbox/Sinha/Lab/Research/iEEG_recon/dependencies'));
+
 
 %% FSL Setup
 
