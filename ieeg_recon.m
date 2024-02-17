@@ -368,7 +368,7 @@ classdef ieeg_recon
 
         end
 
-        function electrodes2ROI = module3(obj, atlas, lookupTable)
+        function electrodes2ROI = module3(obj, atlas, lookupTable, diameter)
             %module3: Outputs of this module goes in
             %output:ieeg_recon/module3 folder
 
@@ -430,12 +430,16 @@ classdef ieeg_recon
 
                 % if an electrode is not within 2.5mm of any ROI it is in the white matter
                 % or outside the brain
-                implant2roiNum(dist_mm >= 2.6) = nan;
-                [implant2roi{dist_mm >= 2.6, :}] = deal('');
+                % implant2roiNum(dist_mm >= 2.6) = nan;
+                % [implant2roi{dist_mm >= 2.6, :}] = deal('');
+
+                implant2roiNum(dist_mm > diameter) = nan;
+                [implant2roi{dist_mm > diameter, :}] = deal('');
 
 
                 % Find contacts outside the brain
-                electrodes_surf_outwm =  [electrodes_surfmm(dist_mm >= 2.6,:), find(dist_mm >= 2.6)];
+                % electrodes_surf_outwm =  [electrodes_surfmm(dist_mm >= 2.6,:), find(dist_mm >= 2.6)];
+                electrodes_surf_outwm =  [electrodes_surfmm(dist_mm > diameter,:), find(dist_mm > diameter)];
 
                 [lpv, lpf] = read_surf([obj.freeSurferDir '/surf/lh.pial']);
                 [lwv, lwf] = read_surf([obj.freeSurferDir '/surf/lh.white']);
