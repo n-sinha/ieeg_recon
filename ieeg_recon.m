@@ -48,7 +48,7 @@ classdef ieeg_recon
         function fileLocations = module2(obj, varargin)
             %module2: Outputs of this module goes in
             %output:ieeg_recon/module2 folder
-
+            pathname
             config_iEEGrecon;
             mkdir(obj.output, 'ieeg_recon/module2');
 
