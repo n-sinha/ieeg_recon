@@ -1,91 +1,178 @@
-# iEEG_implant_reconstruction
+# iEEG Implant Reconstruction Pipeline
 
-## Startup 
-* Make sure that FSL is setup properly and added to the shell profile.
+A MATLAB-based pipeline for reconstructing intracranial EEG (iEEG) electrode locations from post-implant CT and pre-implant MRI scans.
 
-## Download example data
+## Overview
 
-* To test the codes, download example data and put it in this directory: [Dropbox](https://www.dropbox.com/sh/ylxc586grm0p7au/AAAs8QQwUo0VQOSweDyj1v_ta?dl=0)
+This pipeline provides tools for:
+- Extracting electrode coordinates from post-implant CT scans
+- Co-registering CT and MRI images
+- Mapping electrodes to anatomical regions
+- Quality assurance visualization
+
+## Prerequisites
+
+### Required Software
+- MATLAB (version 2019b or later recommended)
+- FSL (FMRIB Software Library)
+- ITK-SNAP
+- FreeSurfer
+
+### System Requirements
+- Operating System: Linux/Unix (recommended), macOS, or Windows with Unix subsystem
+- RAM: 8GB minimum, 16GB recommended
+- Storage: At least 10GB free space for processing
+
+## Installation
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/username/iEEG_implant_reconstruction.git
+   ```
+
+2. Add FSL to your shell profile:
+   ```bash
+   export FSLDIR=/path/to/fsl
+   source ${FSLDIR}/etc/fslconf/fsl.sh
+   export PATH=${FSLDIR}/bin:${PATH}
+   ```
+
+3. Configure paths in `config_iEEGrecon.m`
+
+## Configuration Example
+
+After cloning the repository and setting up the required software, you need to configure the paths in `config_iEEGrecon.m`. Below is an example configuration:
+
+```matlab
+%% Set external library in path
+
+addpath(genpath('/path/to/your/dependencies'))
+
+%% FSL Setup
+
+setenv('FSLDIR', '/path/to/fsl');
+setenv('FSLOUTPUTTYPE', 'NIFTI_GZ');
+fsldir = getenv('FSLDIR');
+fsldirmpath = sprintf('%s/etc/matlab', fsldir);
+path(path, fsldirmpath);
+clear fsldir fsldirmpath;
+
+%% ITK Snap Setup
+
+setenv('ITKSNAPDIR', '/path/to/ITK-SNAP');
+itksnapdir = getenv('ITKSNAPDIR');
+itksnapmpath = sprintf('%s', itksnapdir);
+path(path, itksnapmpath);
+clear itksnapdir itksnapmpath;
+
+%% Freesurfer setup
+
+setenv('FREESURFER_HOME', '/path/to/freesurfer');
+setenv('SUBJECTS_DIR', '/path/to/your/subjects_dir');
+FREESURFER_HOME = getenv('FREESURFER_HOME');
+freesurferdirmpath = sprintf('%s/SetUpFreeSurfer.sh', FREESURFER_HOME);
+system(['sh ' freesurferdirmpath], '-echo');
+clear freesurferdirmpath FREESURFER_HOME;
+```
+
+Make sure to replace `/path/to/your/dependencies`, `/path/to/fsl`, `/path/to/ITK-SNAP`, `/path/to/freesurfer`, and `/path/to/your/subjects_dir` with the actual paths on your system.
 
 
-## Module 1
+## Usage
 
-"module1" exports the electrode coordinates of a post-implant CT scan in both voxel and native spaces. The function uses the information from a config file "config_iEEGrecon" and reads in the electrode coordinates from a file specified by "obj.postImplantCT_electrodes". The function then creates a directory "ieeg_recon/module1" under the "obj.output" directory. The electrode names and their corresponding coordinates in CT voxel space are saved in two separate text files, "electrode_names.txt" and "electrodes_inCTvox.txt". The CT image data and its header information are read using the "niftiinfo" and "niftiread" functions and stored in the "CT" structure. The function removes the skull portion of the CT image by finding voxels with intensity values higher than a threshold (99.95 percentile). The electrode coordinates in CT voxel space and CT native space (in mm) are calculated and saved in two separate text files, "electrodes_inCTmm.txt".
+### Module 1: Electrode Coordinate Export
+This module extracts electrode coordinates from post-implant CT scans in both voxel and native space.
 
-## Module 2
-This is a function in MATLAB (or similar) programming language. The purpose of this function is to perform image registration between two images: the pre-implant MRI and post-implant CT scans. The function is part of a larger program called iEEGrecon. The function makes use of external tools such as FSL and ITK-SNAP to perform the image registration. The function first checks if the required output files are present, and if not, performs the image registration. The output files include the registered CT image, transformation matrix, and electrode locations in both MRI and CT images. The function saves the output files in a folder named ieeg_recon/module2 within the output folder. The function also has a try-catch block to handle potential errors that might occur during the image registration.
+```matlab
+% Initialize the pipeline object
+obj = iEEGReconPipeline();
 
-This code segment is performing image registration between two medical images: a post-implant CT scan and a pre-implant MRI scan. The code uses two registration methods: "greedy with image centering" and "FLIRT registration fine-tuned with greedy".
+% Run Module 1
+obj.module1();
+```
 
-In the first method, "greedy with image centering", the CT scan is thresholded with a value of 0, then registered to the MRI using the 'greedy' program with "image centering" option enabled. The output of this registration is a transform matrix that is converted to a text file in FSL format. This transform is then applied to the thresholded CT image to align it with the MRI.
+### Module 2: Image Registration
+This module performs CT-MRI co-registration. You can choose between:
+- Greedy registration with image centering (`'gc'`)
+- FLIRT registration fine-tuned with greedy (`'g'`)
 
-In the second method, "FLIRT registration fine-tuned with greedy", the thresholded CT is first registered to the MRI using the FSL's 'flirt' program with mutual information cost function and 6 degrees of freedom. The output of this registration is then fine-tuned using the 'greedy' program with "identity" option enabled.
+```matlab
+% Run Module 2 with greedy registration and no visualization
+fileLocations = obj.module2('gc', false);
+```
 
-Both methods produce an aligned CT image in the end, which can be used for further processing or analysis.
+### Module 3: ROI Mapping
+This module maps electrodes to anatomical regions using an atlas.
 
-## Module 2 Quality Assurance
-The code is a MATLAB function for quality assurance (QA) in module 2 of a iEEG reconstruction process. It creates a folder "ieeg_recon/module2" in the specified "obj.output" directory and generates screenshots of the registration of the CT and MRI images using the specified image viewer. The screenshots include views of the registration in sagittal, coronal, axial, and 3D views. The image viewer can be specified as "freeview", "freeview_snapshot", or "itksnap". If the image viewer is not specified, the code throws an error. The screenshots are saved in the "ieeg_recon/module2" folder.
+```matlab
+% Run Module 3
+obj.module3();
+```
 
-## Module 3
-This code defines a function module3 that maps electrodes in a patient's brain to regions of interest (ROIs) defined by an atlas and a lookup table.
+### Notes
+- Ensure that all input files are correctly placed in the expected directories before running the modules.
+- Adjust the parameters as needed for your specific dataset and analysis requirements.
 
-The function takes three inputs: obj, atlas, and lookupTable. obj is an object with a property output that specifies the output directory. atlas is the file path to an atlas image in NIfTI format. lookupTable is a table that maps values in the atlas image to ROI labels.
 
-The code first creates the output directory if it does not already exist. Then, it loads electrode coordinates in both millimeters and voxels from text files in the obj.output directory. The atlas and lookup table are also loaded into the workspace.
+## Data Structure
 
-The code converts the voxel coordinates of the atlas to millimeter coordinates using the transformation matrix in the NIfTI header. Then, it maps each electrode to the closest ROI using a k-nearest neighbors search with a distance threshold of 2.6 millimeters. Electrodes that are farther than 2.6 millimeters from any ROI are considered to be in the white matter or outside the brain.
+### Input Files
+- **Pre-implant MRI scan (T1-weighted):** Required for anatomical reference.
+- **Post-implant CT scan:** Used to locate electrode positions.
+- **Electrode coordinates file:** Contains initial electrode positions.
+- **Atlas file (optional):** Used for mapping electrodes to anatomical regions.
+- **Lookup table (optional):** Provides additional mapping information.
 
-The final result is a table electrodes2ROI that contains the label, coordinates, and ROI information for each electrode. The table is saved to a .csv file in the output directory.
+### Output Structure
+The pipeline generates the following output files organized by module:
 
-## Outline
-Here is an outline for the README documentation of your code:
+```
+ieeg_recon/
+├── module1/
+│   ├── electrode_names.txt       # List of electrode names
+│   ├── electrodes_inCTvox.txt    # Electrode coordinates in CT voxel space
+│   └── electrodes_inCTmm.txt     # Electrode coordinates in CT millimeter space
+├── module2/
+│   ├── ct_to_mri.nii.gz          # Registered CT to MRI image
+│   ├── electrodes_inMRI.nii.gz   # Electrode positions in MRI space
+│   └── QA_registration_.png      # Quality assurance image for registration
+└── module3/
+    └── electrodes2ROI.csv        # Mapping of electrodes to regions of interest
+```
 
-### Introduction:
+### Notes
+- Ensure that input files are correctly formatted and placed in the expected directories before running the pipeline.
+- The output files are organized by module to facilitate easy access and analysis.
 
-Brief overview of the purpose and functionality of the code.
-Description of what the code does and its intended use.
-Requirements:
+## Example Data
 
-List of required software and libraries (e.g. MATLAB, Python libraries).
-Description of system requirements (e.g. operating system, hardware specifications).
-Installation:
+Example data is available for testing: [download](https://www.dropbox.com/sh/ylxc586grm0p7au/AAAs8QQwUo0VQOSweDyj1v_ta?dl=0)
 
-Step-by-step instructions for installing and setting up the code.
-Explanation of how to set up dependencies and required libraries.
-Usage:
+## Quality Assurance
 
-Description of how to run the code and its input parameters.
-Explanation of how to use the code and how to interpret its outputs.
-Code Structure:
+The pipeline includes built-in quality assurance tools:
+- Registration quality checks
+- Electrode placement verification
+- Visual inspection tools
 
-Explanation of the code's structure and organization.
-List of files included in the code and their functions.
-Explanation of the main functions and subroutines of the code.
-Data Inputs:
+## Python Version
 
-Description of the input data format and requirements.
-Explanation of how to prepare input data and where to obtain it.
-Outputs:
+A python version of the pipeline is also available. See documentation https://ieeg-recon.readthedocs.io/
 
-Description of the code's outputs and the format of the output files.
-Explanation of how to interpret the outputs and what they represent.
-Limitations:
+## Contributing
 
-Explanation of any known limitations or problems with the code.
-Discussion of any potential issues or limitations that users should be aware of.
-References:
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
-List of any relevant references or resources used in creating the code.
-Explanation of how the code builds upon or relates to existing research or projects.
-Contact:
+## License
 
-Information on how to contact the authors or developers of the code.
-Description of how to report bugs, ask questions, or provide feedback.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-License:
-Information on the license under which the code is released.
-Explanation of the terms and conditions of using the code.
+## Citation
 
-Contributing:
-Information on how to contribute to the development of the code.
-Explanation of the guidelines for contributing and how to get involved.
+If you use this software in your research, please cite:
+
+> **Lucas A, Scheid BH, Pattnaik AR, Gallagher R, Mojena M, Tranquille A, Prager B, Gleichgerrcht E, Gong R, Litt B, Davis KA, Das S, Stein JM, Sinha N. iEEG-recon: A fast and scalable pipeline for accurate reconstruction of intracranial electrodes and implantable devices. Epilepsia. 2024 Mar;65(3):817-829. doi: 10.1111/epi.17863. Epub 2024 Jan 10. PMID: 38148517; PMCID: PMC10948311.**
+
+## Support
+
+For bug reports and feature requests, please use the [GitHub Issue Tracker](https://github.com/n-sinha/ieeg_recon/issues).
