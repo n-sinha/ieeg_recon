@@ -1,5 +1,5 @@
 test/*
-config.m
+config_iEEGrecon.m
 
 # Windows default autosave extension
 *.asv
