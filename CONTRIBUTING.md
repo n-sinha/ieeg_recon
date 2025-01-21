@@ -6,7 +6,7 @@ Thank you for considering contributing to the iEEG Implant Reconstruction Pipeli
 
 ### Reporting Issues
 
-If you encounter any bugs or have suggestions for improvements, please use the [GitHub Issue Tracker](https://github.com/username/iEEG_implant_reconstruction/issues) to report them. When reporting an issue, please include:
+If you encounter any bugs or have suggestions for improvements, please use the [GitHub Issue Tracker](https://github.com/n-sinha/iEEG_implant_reconstruction/issues) to report them. When reporting an issue, please include:
 
 - A clear and descriptive title
 - A detailed description of the problem or suggestion
@@ -26,7 +26,7 @@ If you are ready to contribute code, please follow these steps:
 2. **Clone the Fork**: Clone your fork to your local machine.
 
    ```bash
-   git clone https://github.com/your-username/iEEG_implant_reconstruction.git
+   git clone https://github.com/n-sinha/iEEG_implant_reconstruction.git
    ```
 
 3. **Create a Branch**: Create a new branch for your changes.
