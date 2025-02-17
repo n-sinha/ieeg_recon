@@ -7,7 +7,9 @@ import nibabel as nib
 from pathlib import Path
 from scipy.spatial import cKDTree
 import argparse
-from dotenv import load_dotenv  # Add this import at the top
+from dotenv import load_dotenv
+from nibabel.freesurfer.io import read_geometry  # For reading FreeSurfer surfaces
+import trimesh  # For point-in-polyhedron tests
 
 #%% 
 class IEEGRecon:
@@ -200,6 +202,52 @@ class IEEGRecon:
                '-applyxfm']
         subprocess.run(cmd, check=True)
 
+    def _run_greedy_centered_no_threshold(self, output_dir):
+        """Run greedy registration with image centering without CT thresholding"""
+        print('Running greedy registration with image centering')
+        
+        # Run greedy registration
+        subprocess.run([
+            f"{self.itksnap}/greedy",
+            "-d", "3",
+            "-i", self.preImplantMRI,
+            self.postImplantCT,  # Use original CT instead of thresholded
+            "-o", str(output_dir / 'ct_to_mri.mat'),
+            "-a", "-dof", "6",
+            "-m", "NMI",
+            "-ia-image-centers",
+            "-n", "100x50x0x0"
+        ], stdout=open(output_dir / 'greedy.log', 'w'), check=True)
+
+        # Convert transform to FSL format
+        subprocess.run([
+            f"{self.itksnap}/c3d_affine_tool",
+            "-ref", self.preImplantMRI,
+            "-src", self.postImplantCT,
+            str(output_dir / 'ct_to_mri.mat'),
+            "-ras2fsl",
+            "-o", str(output_dir / 'ct_to_mri_xform.txt')
+        ], check=True)
+
+        # Remove temporary mat file
+        (output_dir / 'ct_to_mri.mat').unlink()
+
+        # Apply transform
+        cmd = ['flirt',
+               '-in', self.postImplantCT,
+               '-ref', self.preImplantMRI,
+               '-init', str(output_dir / 'ct_to_mri_xform.txt'),
+               '-out', str(output_dir / 'ct_to_mri.nii.gz'),
+               '-applyxfm']
+        subprocess.run(cmd, check=True)
+
+        # Threshold the registered CT image
+        cmd = ['fslmaths',
+               str(output_dir / 'ct_to_mri.nii.gz'),
+               '-thr', '0',
+               str(output_dir / 'ct_to_mri.nii.gz')]
+        subprocess.run(cmd, check=True)
+
     def _transform_electrode_coordinates(self, output_dir):
         """Apply registration transform to electrode coordinates"""
         # Transform mm coordinates
@@ -346,6 +394,140 @@ class IEEGRecon:
             else:
                 raise ValueError(f"Unknown imageviewer option: {imageviewer}")
 
+    def module3(self, atlas, lookup_table, diameter=2.5, skip_existing=False):
+        """
+        Module3: Map electrodes to brain regions using provided atlas
+        
+        Args:
+            atlas (str/Path): Path to atlas NIFTI file
+            lookup_table (str/Path): Path to lookup table CSV/txt file
+            diameter (float): Maximum distance in mm for electrode-to-ROI mapping (default: 2.5)
+            skip_existing (bool): If True, skip processing if output files exist
+        
+        Returns:
+            str: Path to output electrodes2ROI CSV file
+        """
+        # Create output directory
+        output_dir = Path(self.output) / 'ieeg_recon/module3'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Define output file location
+        output_file = output_dir / 'electrodes2ROI.csv'
+        
+        # Check if file exists and skip if requested
+        if skip_existing and output_file.exists():
+            print("Module 3 output already exists, skipping...")
+            return str(output_file)
+        
+        # Verify input files exist
+        for file in [atlas, lookup_table]:
+            if not Path(file).exists():
+                raise FileNotFoundError(f"Input file not found: {file}")
+
+        # Load electrode coordinates and names
+        electrodes_mm = np.loadtxt(
+            Path(self.output) / 'ieeg_recon/module2/electrodes_inMRImm.txt',
+            skiprows=1  # Skip header if present
+        )
+        
+        electrodes_vox = np.loadtxt(
+            Path(self.output) / 'ieeg_recon/module2/electrodes_inMRIvox.txt',
+            skiprows=1
+        )
+        
+        labels = np.loadtxt(
+            Path(self.output) / 'ieeg_recon/module1/electrode_names.txt',
+            dtype=str
+        )
+
+        # Load atlas and lookup table
+        atlas_img = nib.load(atlas)
+        atlas_data = atlas_img.get_fdata()
+        lut = pd.read_csv(lookup_table, sep=None, engine='python')  # Automatically detect separator
+
+        # Get atlas ROI coordinates in voxels
+        atlas_voxels = []
+        for _, row in lut.iterrows():
+            vox = np.array(np.where(atlas_data == row['roiNum'])).T
+            if len(vox) > 0:
+                atlas_voxels.append(np.column_stack([vox, np.full(len(vox), row['roiNum'])]))
+        
+        atlas_voxels = np.vstack(atlas_voxels)
+
+        # Convert atlas voxels to mm space
+        vox_homog = np.hstack((atlas_voxels[:, :3], np.ones((len(atlas_voxels), 1))))
+        cord_mm = np.dot(atlas_img.affine, vox_homog.T).T[:, :3]
+        
+        # Find nearest ROI for each electrode
+        tree = cKDTree(cord_mm)
+        dist_mm, idx = tree.query(electrodes_mm, k=1)
+        
+        # Get ROI numbers for each electrode
+        implant2roiNum = atlas_voxels[idx, 3]
+        
+        # Map ROI numbers to names
+        implant2roi = pd.Series(implant2roiNum).map(
+            lut.set_index('roiNum')['roi'].to_dict()
+        ).fillna('')
+        
+        # Mark contacts beyond diameter as white matter or outside brain
+        implant2roi[dist_mm > diameter] = ''
+        implant2roiNum[dist_mm > diameter] = np.nan
+        
+        # Load FreeSurfer surfaces
+        lh_pial, _ = read_geometry(Path(self.freeSurferDir) / 'surf/lh.pial')
+        lh_white, _ = read_geometry(Path(self.freeSurferDir) / 'surf/lh.white')
+        rh_pial, _ = read_geometry(Path(self.freeSurferDir) / 'surf/rh.pial')
+        rh_white, _ = read_geometry(Path(self.freeSurferDir) / 'surf/rh.white')
+        
+        # Convert surfaces to trimesh format
+        lh_pial_mesh = trimesh.Trimesh(vertices=lh_pial, faces=_)
+        rh_pial_mesh = trimesh.Trimesh(vertices=rh_pial, faces=_)
+        lh_white_mesh = trimesh.Trimesh(vertices=lh_white, faces=_)
+        rh_white_mesh = trimesh.Trimesh(vertices=rh_white, faces=_)
+        
+        # Find contacts outside brain (not in either pial surface)
+        outside_mask = ~(
+            lh_pial_mesh.contains(electrodes_mm[dist_mm > diameter]) | 
+            rh_pial_mesh.contains(electrodes_mm[dist_mm > diameter])
+        )
+        outside_indices = np.where(dist_mm > diameter)[0][outside_mask]
+        implant2roi.iloc[outside_indices] = 'outside-brain'
+        
+        # Find white matter contacts (inside white surface)
+        wm_indices = np.where(dist_mm > diameter)[0][~outside_mask]
+        implant2roi.iloc[wm_indices] = 'white-matter'
+        
+        # Verify white matter contacts
+        wm_contacts = electrodes_mm[wm_indices]
+        in_white = (
+            lh_white_mesh.contains(wm_contacts) | 
+            rh_white_mesh.contains(wm_contacts)
+        )
+        
+        if np.all(in_white):
+            print('white-matter contacts correctly assigned')
+        else:
+            print(f"check white-matter contacts in: {self.output}")
+        
+        # Create output dataframe
+        electrodes2ROI = pd.DataFrame({
+            'labels': labels,
+            'mm_x': electrodes_mm[:, 0],
+            'mm_y': electrodes_mm[:, 1],
+            'mm_z': electrodes_mm[:, 2],
+            'vox_x': electrodes_vox[:, 0],
+            'vox_y': electrodes_vox[:, 1],
+            'vox_z': electrodes_vox[:, 2],
+            'roi': implant2roi,
+            'roiNum': implant2roiNum
+        })
+        
+        # Save output
+        electrodes2ROI.to_csv(output_file, index=False)
+        
+        return str(output_file)
+
 def run_pipeline(pre_implant_mri, post_implant_ct, ct_electrodes, output_dir, env_path=None,
                 modules=['1', '2'], skip_existing=False, reg_type='gc_noCTthereshold', qa_viewer='freeview'):
     """
@@ -390,6 +572,12 @@ def run_pipeline(pre_implant_mri, post_implant_ct, ct_electrodes, output_dir, en
             print(f"{name}: {path}")
         
         recon.module2_QualityAssurance(file_locations, qa_viewer)
+
+    if '3' in modules:
+        print("Running Module 3...")
+        atlas = '/Users/nishant/Dropbox/Sinha/Lab/Research/iEEG_recon_local/data/sub-RID0031/derivatives/freesurfer/mri/aparc+aseg.nii.gz'
+        lookup_table = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
+        recon.module3(atlas, lookup_table, diameter=2.5)
     
     return file_locations
 
@@ -419,8 +607,8 @@ if __name__ == "__main__":
         ct_electrodes=ct_electrodes,
         output_dir=output_dir,
         env_path=env_path,
-        modules=['1', '2'],  # Run both modules by default
-        skip_existing=False,  # Don't skip existing files by default
+        modules=['3'],  # Run both modules by default
+        skip_existing=True,  # Don't skip existing files by default
         reg_type='gc_noCTthereshold',  # Default registration type
         qa_viewer='freeview'  # Default viewer
     )

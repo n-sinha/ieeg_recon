@@ -4,3 +4,6 @@ nibabel>=3.2.0
 scipy>=1.7.0
 python-dotenv>=0.19.0
 bids2table>=0.1.0
+ipykernel>=6.0.0
+picsl_greedy>=0.0.5
+trimesh>=3.0.0
