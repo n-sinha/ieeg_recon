@@ -50,11 +50,21 @@ def main():
     # Validate input files exist
     for filepath in [pre_implant_mri, post_implant_ct, ct_electrodes]:
         if not filepath.exists():
-            print(f"Error: File not found: {filepath}")
-            return
+            raise FileNotFoundError(f"Input file not found: {filepath}")
 
-    # Convert modules string to list
-    modules = args.modules.split(',')
+    # Validate output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Validate modules format and content
+    try:
+        modules = [m.strip() for m in args.modules.split(',')]
+        valid_modules = {'1', '2', '3'}
+        invalid_modules = set(modules) - valid_modules
+        if invalid_modules:
+            raise ValueError(f"Invalid modules specified: {invalid_modules}. Valid modules are: {valid_modules}")
+    except Exception as e:
+        print(f"Error parsing modules: {str(e)}")
+        return
 
     print("Processing with following inputs:")
     print(f"T1 MRI: {pre_implant_mri}")
