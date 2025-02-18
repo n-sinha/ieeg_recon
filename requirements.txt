@@ -10,3 +10,5 @@ trimesh>=3.0.0
 Rtree>=1.0.0
 nilearn>=0.10.0
 matplotlib>=3.5.0
+plotly>=5.0.0
+kaleido>=0.2.0

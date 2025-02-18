@@ -13,6 +13,7 @@ from nibabel.freesurfer.io import read_geometry
 import trimesh
 from nilearn import plotting as niplot
 from matplotlib.colors import LinearSegmentedColormap
+import plotly.graph_objects as go
 
 #%% 
 class IEEGRecon:
@@ -570,6 +571,195 @@ class IEEGRecon:
         # Save output
         electrodes2ROI.to_csv(file_locations['electrodes2ROI'], index=False)
         return str(file_locations['electrodes2ROI'])
+    
+    def module3_QualityAssurance(self, recon_file):
+        """
+        Generate quality assurance visualizations for module3 results
+        
+        Args:
+            file_locations (str): Path to module3 output file
+        """
+        # Create output directory
+        output_dir = Path(self.output) / 'ieeg_recon' / 'module3'
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Load electrode data
+        ieeg = pd.read_csv(recon_file)
+
+        # Load FreeSurfer surfaces
+        lh_pial_verts, lh_pial_faces = read_geometry(Path(self.freeSurferDir) / 'surf/lh.pial')
+        rh_pial_verts, rh_pial_faces = read_geometry(Path(self.freeSurferDir) / 'surf/rh.pial')
+
+        # Create interactive 3D visualization using plotly
+        fig = go.Figure()
+
+        # Update mesh settings for left hemisphere
+        fig.add_trace(go.Mesh3d(
+            x=lh_pial_verts[:, 0], y=lh_pial_verts[:, 1], z=lh_pial_verts[:, 2],
+            i=lh_pial_faces[:, 0], j=lh_pial_faces[:, 1], k=lh_pial_faces[:, 2],
+            color='#808080',  # Medium grey color
+            opacity=1.0,
+            flatshading=False,
+            lighting=dict(
+                ambient=0.3,     # Reduced ambient light for more contrast
+                diffuse=0.8,     # Strong diffuse for material look
+                specular=1.0,    # Maximum specular for shininess
+                roughness=0.1,   # Low roughness for smoother, shinier surface
+                fresnel=0.9      # High fresnel for metallic appearance
+            ),
+            lightposition=dict(x=100, y=200, z=150),  # Angled light for better highlights
+            name='Left Hemisphere',
+            visible=True,
+            showscale=False
+        ))
+
+        # Update mesh settings for right hemisphere (same settings as left)
+        fig.add_trace(go.Mesh3d(
+            x=rh_pial_verts[:, 0], y=rh_pial_verts[:, 1], z=rh_pial_verts[:, 2],
+            i=rh_pial_faces[:, 0], j=rh_pial_faces[:, 1], k=rh_pial_faces[:, 2],
+            color='#808080',  # Medium grey color
+            opacity=1.0,
+            flatshading=False,
+            lighting=dict(
+                ambient=0.3,     # Reduced ambient light for more contrast
+                diffuse=0.8,     # Strong diffuse for material look
+                specular=1.0,    # Maximum specular for shininess
+                roughness=0.1,   # Low roughness for smoother, shinier surface
+                fresnel=0.9      # High fresnel for metallic appearance
+            ),
+            lightposition=dict(x=100, y=200, z=150),  # Angled light for better highlights
+            name='Right Hemisphere',
+            visible=True,
+            showscale=False
+        ))
+
+        # Update electrode points
+        fig.add_trace(go.Scatter3d(
+            x=ieeg['surfmm_x'],
+            y=ieeg['surfmm_y'],
+            z=ieeg['surfmm_z'],
+            mode='markers',
+            marker=dict(
+                size=4,
+                color='red',
+                opacity=1.0,
+                symbol='circle'
+            ),
+            text=ieeg['labels'],
+            hovertemplate=(
+                "<b>%{text}</b><br>" +
+                "ROI: %{customdata[0]}<br>" +
+                "X: %{customdata[1]:.2f}<br>" +
+                "Y: %{customdata[2]:.2f}<br>" +
+                "Z: %{customdata[3]:.2f}<br>" +
+                "<extra></extra>"
+            ),
+            customdata=np.column_stack((
+                ieeg['roi'],
+                ieeg['surfmm_x'],
+                ieeg['surfmm_y'],
+                ieeg['surfmm_z']
+            )),
+            name='Electrodes',
+            showlegend=True
+        ))
+
+        # Create buttons for toggling hemisphere visibility and electrode labels
+        updatemenus = [
+            # Hemisphere visibility buttons - Top
+            dict(
+                type="buttons",
+                showactive=True,
+                buttons=[
+                    dict(label="Show All",
+                         method="update",
+                         args=[{"visible": [True, True, True]}]),
+                    dict(label="Left Only",
+                         method="update",
+                         args=[{"visible": [True, False, True]}]),
+                    dict(label="Right Only",
+                         method="update",
+                         args=[{"visible": [False, True, True]}]),
+                    dict(label="Electrodes Only",
+                         method="update",
+                         args=[{"visible": [False, False, True]}]),
+                ],
+                direction="down",
+                pad={"r": 10, "t": 10},
+                x=0.02,  # Move closer to left edge
+                xanchor="left",
+                y=0.9,   # Position at top
+                yanchor="top"
+            ),
+            # Electrode size buttons - Middle
+            dict(
+                type="buttons",
+                showactive=True,
+                buttons=[
+                    dict(label="Small Electrodes",
+                         method="restyle",
+                         args=[{"marker.size": 5}]),
+                    dict(label="Medium Electrodes",
+                         method="restyle",
+                         args=[{"marker.size": 8}]),
+                    dict(label="Large Electrodes",
+                         method="restyle",
+                         args=[{"marker.size": 10}]),
+                ],
+                direction="down",
+                pad={"r": 10, "t": 10},
+                x=0.02,  # Move closer to left edge
+                xanchor="left",
+                y=0.5,   # Position in middle
+                yanchor="middle"
+            ),
+            # Label visibility toggle - Bottom
+            dict(
+                type="buttons",
+                showactive=True,
+                buttons=[
+                    dict(label="Show Labels",
+                         method="restyle",
+                         args=[{"mode": "markers+text"}]),
+                    dict(label="Hide Labels",
+                         method="restyle",
+                         args=[{"mode": "markers"}]),
+                ],
+                direction="down",
+                pad={"r": 10, "t": 10},
+                x=0.02,  # Move closer to left edge
+                xanchor="left",
+                y=0.1,   # Position at bottom
+                yanchor="bottom"
+            )
+        ]
+
+        # Update layout with brighter settings
+        fig.update_layout(
+            scene=dict(
+                xaxis=dict(visible=False, showgrid=False, showbackground=False),
+                yaxis=dict(visible=False, showgrid=False, showbackground=False),
+                zaxis=dict(visible=False, showgrid=False, showbackground=False),
+                aspectmode="data",
+                camera=dict(
+                    up=dict(x=0, y=0, z=1),
+                    center=dict(x=0, y=0, z=0),
+                    eye=dict(x=1.5, y=1.5, z=1.5)
+                ),
+                bgcolor='white'
+            ),
+            paper_bgcolor='white',
+            plot_bgcolor='white',
+            margin=dict(r=0, l=0, b=0, t=0),
+            showlegend=False,
+            updatemenus=updatemenus
+        )
+
+        # Save the plot as HTML for interactive viewing
+        fig.write_html(str(output_dir / 'electrode_visualization.html'))
+
+        # Save as a static image at 300 DPI
+        fig.write_image(str(output_dir / 'electrode_visualization.png'), scale=3)
 
 #%%
 def run_pipeline(pre_implant_mri, 
@@ -630,7 +820,8 @@ def run_pipeline(pre_implant_mri,
         print("Running Module 3...")
         atlas = freesurfer_dir / 'mri' / 'aparc+aseg.mgz'
         atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
-        recon.module3(atlas, atlas_lut, diameter=2.5, skip_existing=skip_existing)
+        recon_file = recon.module3(atlas, atlas_lut, diameter=2.5, skip_existing=skip_existing)
+        recon.module3_QualityAssurance(recon_file)
     
     return file_locations
 
