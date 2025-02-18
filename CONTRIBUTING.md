@@ -57,10 +57,6 @@ If you are ready to contribute code, please follow these steps:
 
 Please follow the existing code style and conventions used in the project. Consistency helps maintain readability and ease of maintenance.
 
-### Code of Conduct
-
-By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
-
 ## Thank You!
 
 We appreciate your contributions and efforts to improve the iEEG Implant Reconstruction Pipeline. If you have any questions, feel free to reach out to the maintainers through the issue tracker.
