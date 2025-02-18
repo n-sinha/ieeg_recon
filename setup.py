@@ -63,13 +63,13 @@ setup(
     
     # Include non-Python files
     package_data={
-        'src': ['*.txt', '*.json'],
+        'ieeg_recon': ['*.txt', '*.json'],
     },
     
     # Command-line scripts
     entry_points={
         'console_scripts': [
-            'ieeg-recon=src.run_ieeg_recon:main',
+            'ieeg-recon=ieeg_recon.run_ieeg_recon:main',
         ],
     },
     
