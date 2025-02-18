@@ -7,9 +7,12 @@ import nibabel as nib
 from pathlib import Path
 from scipy.spatial import cKDTree
 import argparse
+import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 from nibabel.freesurfer.io import read_geometry
 import trimesh
+from nilearn import plotting as niplot
+from matplotlib.colors import LinearSegmentedColormap
 
 #%% 
 class IEEGRecon:
@@ -336,7 +339,7 @@ class IEEGRecon:
         
         Args:
             file_locations (dict): Dictionary containing paths to module2 output files
-            imageviewer (str): Type of viewer to use - 'freeview_snapshot', 'freeview', or 'itksnap'
+            imageviewer (str): Type of viewer to use - 'freeview_snapshot', 'freeview', 'niplot', or 'itksnap'
         """
         # Create output directory
         output_dir = Path(self.output) / 'ieeg_recon' / 'module2'
@@ -399,6 +402,31 @@ class IEEGRecon:
                     "-g", self.preImplantMRI,
                     "-o", file_locations['ct_to_mri']
                 ], check=True)
+            elif imageviewer == 'niplot':
+                # Create custom colormap that is transparent for zeros and scales from yellow to red
+                colors = [(0, 0, 0, 0),          # transparent
+                         (1, 1, 0, 1),           # yellow
+                         (1, 0.5, 0, 1),         # orange
+                         (1, 0, 0, 1)]           # red
+                n_bins = 256  # Number of gradients
+                custom_cmap = LinearSegmentedColormap.from_list('custom_hot', colors, N=n_bins)
+                
+                # Create the plot
+                display = niplot.plot_roi(
+                    file_locations['ct_to_mri'], 
+                    bg_img=self.preImplantMRI, 
+                    cmap=custom_cmap,
+                    title='Registration', 
+                    display_mode="mosaic"
+                )
+                
+                # Save the plot
+                plt.savefig(str(output_dir / "QA_registration_niplot.png"), 
+                           dpi=300, 
+                           bbox_inches='tight')
+                
+                # Show the plot and wait for it to be closed
+                plt.show(block=False)
             else:
                 raise ValueError(f"Unknown imageviewer option: {imageviewer}")
 
@@ -553,7 +581,7 @@ def run_pipeline(pre_implant_mri,
                  modules=['1', '2', '3'], 
                  skip_existing=False, 
                  reg_type='gc_noCTthereshold', 
-                 qa_viewer='freeview'):
+                 qa_viewer='niplot'):
     """
     Run the iEEG reconstruction pipeline
     
@@ -635,10 +663,10 @@ if __name__ == "__main__":
         output_dir=output_dir,
         env_path=env_path,
         freesurfer_dir=freesurfer_dir,
-        modules=['3'],  # Run both modules by default
-        skip_existing=True,  # Don't skip existing files by default
+        modules=['1', '2', '3'],
+        skip_existing=True,
         reg_type='gc_noCTthereshold',  # Default registration type
-        qa_viewer='freeview'  # Default viewer
+        qa_viewer='niplot'  # Default viewer
     )
     
     print("Processing complete!")
