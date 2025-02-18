@@ -25,12 +25,31 @@ This pipeline provides tools for:
 
 ## Installation
 
-1. Clone this repository:
+There are two ways to install this package:
+
+1. **Direct installation from GitHub**:
    ```bash
-   git clone https://github.com/n-sinha/ieeg_recon.git
+   pip install git+https://github.com/n-sinha/ieeg_recon.git
+   ```
+   
+   For development installation (includes testing tools):
+   ```bash
+   pip install "git+https://github.com/n-sinha/ieeg_recon.git#egg=ieeg_recon[dev]"
    ```
 
-2. Create and configure your `.env` file:
+2. **Local development installation**:
+   ```bash
+   # Clone this repository
+   git clone https://github.com/n-sinha/ieeg_recon.git
+   cd ieeg_recon
+   
+   # Install in editable mode
+   pip install -e .
+   # Or with development dependencies
+   pip install -e .[dev]
+   ```
+
+3. Create and configure your `.env` file:
    ```bash
    # FSL Configuration
    FSL_DIR=/path/to/fsl
@@ -43,6 +62,11 @@ This pipeline provides tools for:
    FREESURFER_HOME=/path/to/freesurfer
    SUBJECTS_DIR=/path/to/subjects_dir
    ```
+
+After installation, you can import the package in Python:
+```python
+from ieeg_recon import IEEGRecon, run_pipeline
+```
 
 ## Usage
 
