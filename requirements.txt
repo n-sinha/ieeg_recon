@@ -7,3 +7,4 @@ bids2table>=0.1.0
 ipykernel>=6.0.0
 picsl_greedy>=0.0.5
 trimesh>=3.0.0
+Rtree>=1.0.0

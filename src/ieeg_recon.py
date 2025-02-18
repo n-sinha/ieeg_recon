@@ -8,12 +8,12 @@ from pathlib import Path
 from scipy.spatial import cKDTree
 import argparse
 from dotenv import load_dotenv
-from nibabel.freesurfer.io import read_geometry  # For reading FreeSurfer surfaces
-import trimesh  # For point-in-polyhedron tests
+from nibabel.freesurfer.io import read_geometry
+import trimesh
 
 #%% 
 class IEEGRecon:
-    def __init__(self, pre_implant_mri, post_implant_ct, ct_electrodes, output_dir, env_path=None):
+    def __init__(self, pre_implant_mri, post_implant_ct, ct_electrodes, output_dir, env_path=None, freesurfer_dir=None):
         """
         Initialize IEEGRecon with required paths
         
@@ -23,6 +23,7 @@ class IEEGRecon:
             ct_electrodes (str): Path to electrode coordinates CSV
             output_dir (str): Output directory path (required)
             env_path (str, optional): Path to .env file
+            freesurfer_dir (str, optional): Path to FreeSurfer subjects directory. If provided, overrides SUBJECTS_DIR from env
         """
         # Set main properties
         self.preImplantMRI = pre_implant_mri
@@ -32,10 +33,16 @@ class IEEGRecon:
         self.root_dir = Path(__file__).parent.parent
         
         # Setup environment variables and paths
-        self._setup_environment(env_path)
+        self._setup_environment(env_path, freesurfer_dir)
 
-    def _setup_environment(self, env_path=None):
-        """Setup environment variables and paths from .env file"""
+    def _setup_environment(self, env_path=None, freesurfer_dir=None):
+        """
+        Setup environment variables and paths from .env file
+        
+        Args:
+            env_path (str, optional): Path to .env file
+            freesurfer_dir (str, optional): Path to FreeSurfer subjects directory
+        """
         if env_path is None:
             env_path = Path(__file__).parent / '.env'
         
@@ -47,10 +54,11 @@ class IEEGRecon:
             self.fslLoc = os.getenv('FSL_DIR')
             self.itksnap = os.getenv('ITKSNAP_DIR')
             self.freeSurfer = os.getenv('FREESURFER_HOME')
-            self.freeSurferDir = os.getenv('SUBJECTS_DIR')
+            # Allow freesurfer_dir parameter to override environment variable
+            self.freeSurferDir = freesurfer_dir if freesurfer_dir is not None else os.getenv('SUBJECTS_DIR')
             
             # Ensure required environment variables are set
-            if not all([self.fslLoc, self.itksnap, self.freeSurfer, self.freeSurferDir]):
+            if not all([self.fslLoc, self.itksnap, self.freeSurfer]):
                 raise ValueError("Missing required environment variables")
             
             # Set FSL output type
@@ -394,13 +402,13 @@ class IEEGRecon:
             else:
                 raise ValueError(f"Unknown imageviewer option: {imageviewer}")
 
-    def module3(self, atlas, lookup_table, diameter=2.5, skip_existing=False):
+    def module3(self, atlas, atlas_lut, diameter=2.5, skip_existing=False):
         """
         Module3: Map electrodes to brain regions using provided atlas
         
         Args:
             atlas (str/Path): Path to atlas NIFTI file
-            lookup_table (str/Path): Path to lookup table CSV/txt file
+            atlas_lut (str/Path): Path to lookup table CSV/txt file
             diameter (float): Maximum distance in mm for electrode-to-ROI mapping (default: 2.5)
             skip_existing (bool): If True, skip processing if output files exist
         
@@ -411,23 +419,19 @@ class IEEGRecon:
         output_dir = Path(self.output) / 'ieeg_recon/module3'
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Define output file location
-        output_file = output_dir / 'electrodes2ROI.csv'
-        
-        # Check if file exists and skip if requested
-        if skip_existing and output_file.exists():
-            print("Module 3 output already exists, skipping...")
-            return str(output_file)
-        
-        # Verify input files exist
-        for file in [atlas, lookup_table]:
-            if not Path(file).exists():
-                raise FileNotFoundError(f"Input file not found: {file}")
+        # Define output file locations
+        file_locations = {
+            'electrodes2ROI': output_dir / 'electrodes2ROI.csv'
+        }
+
+        # Check if files exist and skip if requested
+        if skip_existing and all(path.exists() for path in file_locations.values()):
+            return str(file_locations['electrodes2ROI'])
 
         # Load electrode coordinates and names
         electrodes_mm = np.loadtxt(
             Path(self.output) / 'ieeg_recon/module2/electrodes_inMRImm.txt',
-            skiprows=1  # Skip header if present
+            skiprows=1
         )
         
         electrodes_vox = np.loadtxt(
@@ -443,9 +447,17 @@ class IEEGRecon:
         # Load atlas and lookup table
         atlas_img = nib.load(atlas)
         atlas_data = atlas_img.get_fdata()
-        lut = pd.read_csv(lookup_table, sep=None, engine='python')  # Automatically detect separator
+        lut = pd.read_csv(atlas_lut, sep=None, engine='python')
 
-        # Get atlas ROI coordinates in voxels
+        # Get vox2ras-tkr transform from atlas header
+        # vox2ras = atlas_img.header.get_vox2ras()
+        vox2ras_tkr = atlas_img.header.get_vox2ras_tkr()
+        
+        # Transform electrode coordinates to surface space
+        electrodes_homog = np.hstack((electrodes_vox, np.ones((electrodes_vox.shape[0], 1))))
+        electrodes_surfmm = np.round(np.dot(vox2ras_tkr, electrodes_homog.T).T[:, :3], decimals=4)
+
+        # Get atlas ROI coordinates
         atlas_voxels = []
         for _, row in lut.iterrows():
             vox = np.array(np.where(atlas_data == row['roiNum'])).T
@@ -472,64 +484,76 @@ class IEEGRecon:
         
         # Mark contacts beyond diameter as white matter or outside brain
         implant2roi[dist_mm > diameter] = ''
-        implant2roiNum[dist_mm > diameter] = np.nan
-        
+        implant2roiNum = pd.Series(implant2roiNum)
+        implant2roiNum[dist_mm > diameter] = pd.NA
+
         # Load FreeSurfer surfaces
-        lh_pial, _ = read_geometry(Path(self.freeSurferDir) / 'surf/lh.pial')
-        lh_white, _ = read_geometry(Path(self.freeSurferDir) / 'surf/lh.white')
-        rh_pial, _ = read_geometry(Path(self.freeSurferDir) / 'surf/rh.pial')
-        rh_white, _ = read_geometry(Path(self.freeSurferDir) / 'surf/rh.white')
-        
-        # Convert surfaces to trimesh format
-        lh_pial_mesh = trimesh.Trimesh(vertices=lh_pial, faces=_)
-        rh_pial_mesh = trimesh.Trimesh(vertices=rh_pial, faces=_)
-        lh_white_mesh = trimesh.Trimesh(vertices=lh_white, faces=_)
-        rh_white_mesh = trimesh.Trimesh(vertices=rh_white, faces=_)
-        
-        # Find contacts outside brain (not in either pial surface)
+        lh_pial_verts, lh_pial_faces = read_geometry(Path(self.freeSurferDir) / 'surf/lh.pial')
+        lh_white_verts, lh_white_faces = read_geometry(Path(self.freeSurferDir) / 'surf/lh.white')
+        rh_pial_verts, rh_pial_faces = read_geometry(Path(self.freeSurferDir) / 'surf/rh.pial')
+        rh_white_verts, rh_white_faces = read_geometry(Path(self.freeSurferDir) / 'surf/rh.white')
+
+        # Create surface meshes
+        lh_pial_mesh = trimesh.Trimesh(vertices=lh_pial_verts, faces=lh_pial_faces)
+        rh_pial_mesh = trimesh.Trimesh(vertices=rh_pial_verts, faces=rh_pial_faces)
+        lh_white_mesh = trimesh.Trimesh(vertices=lh_white_verts, faces=lh_white_faces)
+        rh_white_mesh = trimesh.Trimesh(vertices=rh_white_verts, faces=rh_white_faces)
+
+        # Find contacts outside brain
         outside_mask = ~(
-            lh_pial_mesh.contains(electrodes_mm[dist_mm > diameter]) | 
-            rh_pial_mesh.contains(electrodes_mm[dist_mm > diameter])
+            lh_pial_mesh.contains(electrodes_surfmm[dist_mm > diameter]) | 
+            rh_pial_mesh.contains(electrodes_surfmm[dist_mm > diameter])
         )
         outside_indices = np.where(dist_mm > diameter)[0][outside_mask]
         implant2roi.iloc[outside_indices] = 'outside-brain'
-        
-        # Find white matter contacts (inside white surface)
+
+        # Find white matter contacts
         wm_indices = np.where(dist_mm > diameter)[0][~outside_mask]
         implant2roi.iloc[wm_indices] = 'white-matter'
-        
-        # Verify white matter contacts
-        wm_contacts = electrodes_mm[wm_indices]
-        in_white = (
-            lh_white_mesh.contains(wm_contacts) | 
-            rh_white_mesh.contains(wm_contacts)
-        )
-        
-        if np.all(in_white):
+
+        # Verify white matter contacts - check if contacts labeled as white matter
+        # are actually inside the white matter surface
+        wm_contacts = electrodes_surfmm[wm_indices]
+        in_left = lh_white_mesh.contains(wm_contacts)
+        in_right = rh_white_mesh.contains(wm_contacts)
+        in_white = in_left | in_right
+
+        if np.sum(in_white) == len(wm_indices):
             print('white-matter contacts correctly assigned')
         else:
             print(f"check white-matter contacts in: {self.output}")
-        
+
         # Create output dataframe
         electrodes2ROI = pd.DataFrame({
             'labels': labels,
             'mm_x': electrodes_mm[:, 0],
             'mm_y': electrodes_mm[:, 1],
             'mm_z': electrodes_mm[:, 2],
+            'surfmm_x': electrodes_surfmm[:, 0],
+            'surfmm_y': electrodes_surfmm[:, 1],
+            'surfmm_z': electrodes_surfmm[:, 2],
             'vox_x': electrodes_vox[:, 0],
             'vox_y': electrodes_vox[:, 1],
             'vox_z': electrodes_vox[:, 2],
             'roi': implant2roi,
             'roiNum': implant2roiNum
         })
-        
-        # Save output
-        electrodes2ROI.to_csv(output_file, index=False)
-        
-        return str(output_file)
 
-def run_pipeline(pre_implant_mri, post_implant_ct, ct_electrodes, output_dir, env_path=None,
-                modules=['1', '2'], skip_existing=False, reg_type='gc_noCTthereshold', qa_viewer='freeview'):
+        # Save output
+        electrodes2ROI.to_csv(file_locations['electrodes2ROI'], index=False)
+        return str(file_locations['electrodes2ROI'])
+
+#%%
+def run_pipeline(pre_implant_mri, 
+                 post_implant_ct, 
+                 ct_electrodes, 
+                 output_dir, 
+                 env_path=None, 
+                 freesurfer_dir=None,
+                 modules=['1', '2', '3'], 
+                 skip_existing=False, 
+                 reg_type='gc_noCTthereshold', 
+                 qa_viewer='freeview'):
     """
     Run the iEEG reconstruction pipeline
     
@@ -553,7 +577,8 @@ def run_pipeline(pre_implant_mri, post_implant_ct, ct_electrodes, output_dir, en
         post_implant_ct=post_implant_ct,
         ct_electrodes=ct_electrodes,
         output_dir=output_dir,
-        env_path=env_path
+        env_path=env_path,
+        freesurfer_dir=freesurfer_dir
     )
     
     # Run selected modules
@@ -575,12 +600,13 @@ def run_pipeline(pre_implant_mri, post_implant_ct, ct_electrodes, output_dir, en
 
     if '3' in modules:
         print("Running Module 3...")
-        atlas = '/Users/nishant/Dropbox/Sinha/Lab/Research/iEEG_recon_local/data/sub-RID0031/derivatives/freesurfer/mri/aparc+aseg.nii.gz'
-        lookup_table = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
-        recon.module3(atlas, lookup_table, diameter=2.5)
+        atlas = freesurfer_dir / 'mri' / 'aparc+aseg.mgz'
+        atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
+        recon.module3(atlas, atlas_lut, diameter=2.5, skip_existing=skip_existing)
     
     return file_locations
 
+#%%
 if __name__ == "__main__":
     # Example usage - replace these values with your actual file paths
     project_path = Path(__file__).parent.parent
@@ -594,6 +620,7 @@ if __name__ == "__main__":
     post_implant_ct = filepath.loc['sub-RID0031']['ct']
     ct_electrodes = filepath.loc['sub-RID0031']['electrodes']
     output_dir = project_path / 'test' / 'output'
+    freesurfer_dir = project_path / 'data' / 'sub-RID0031' / 'derivatives' / 'freesurfer'
    
     # Set config path (defaults to .env in same directory as script)
     env_path = project_path / '.env'
@@ -607,6 +634,7 @@ if __name__ == "__main__":
         ct_electrodes=ct_electrodes,
         output_dir=output_dir,
         env_path=env_path,
+        freesurfer_dir=freesurfer_dir,
         modules=['3'],  # Run both modules by default
         skip_existing=True,  # Don't skip existing files by default
         reg_type='gc_noCTthereshold',  # Default registration type
