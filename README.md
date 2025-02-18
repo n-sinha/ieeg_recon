@@ -43,10 +43,8 @@ There are two ways to install this package:
    git clone https://github.com/n-sinha/ieeg_recon.git
    cd ieeg_recon
    
-   # Install in editable mode
-   pip install -e .
-   # Or with development dependencies
-   pip install -e .[dev]
+   # Install in editable mode with development dependencies
+   pip install -e ".[dev]"
    ```
 
 3. Create and configure your `.env` file:
