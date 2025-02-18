@@ -38,7 +38,7 @@ setup(
     url="https://github.com/n-sinha/ieeg_recon",
     
     # Find packages automatically (looks for __init__.py files)
-    packages=find_packages(include=['src', 'src.*']),
+    packages=find_packages(include=['ieeg_recon', 'ieeg_recon.*']),
     
     # Package dependencies
     install_requires=requirements,

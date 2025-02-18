@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 from pathlib import Path
 import tempfile
 import shutil
-from src.ieeg_recon import IEEGRecon
+from ieeg_recon.ieeg_recon import IEEGRecon
 
 class TestIEEGRecon(unittest.TestCase):
     def setUp(self):

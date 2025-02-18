@@ -2,7 +2,7 @@
 
 import argparse
 from pathlib import Path
-from src.ieeg_recon import run_pipeline
+from ieeg_recon.ieeg_recon import run_pipeline
 
 def main():
     parser = argparse.ArgumentParser(
