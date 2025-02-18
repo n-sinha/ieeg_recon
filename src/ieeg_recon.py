@@ -835,7 +835,7 @@ if __name__ == "__main__":
     pre_implant_mri = project_path / 'data' / 'sub-RID0031' / 'derivatives' / 'freesurfer' / 'mri' / 'T1.nii.gz'
     post_implant_ct = project_path / 'data' / 'sub-RID0031' / 'ses-clinical01' / 'ct' / 'sub-RID0031_ses-clinical01_acq-3D_space-T01ct_ct.nii.gz'
     ct_electrodes = project_path / 'data' / 'sub-RID0031' / 'ses-clinical01' / 'ieeg' / 'sub-RID0031_ses-clinical01_space-T01ct_desc-vox_electrodes.txt'
-    output_dir = project_path / 'test' / 'sub-RID0031'
+    output_dir = project_path / 'data' / 'output' / 'sub-RID0031'
     freesurfer_dir = project_path / 'data' / 'sub-RID0031' / 'derivatives' / 'freesurfer'
    
     # Set config path (defaults to .env in same directory as script)
