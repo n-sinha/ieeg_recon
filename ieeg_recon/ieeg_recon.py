@@ -466,7 +466,7 @@ class IEEGRecon:
         electrodes_vox = np.loadtxt(
             Path(self.output) / 'ieeg_recon/module2/electrodes_inMRIvox.txt',
             skiprows=1
-        )
+        ).astype(int)
         
         labels = np.loadtxt(
             Path(self.output) / 'ieeg_recon/module1/electrode_names.txt',
@@ -761,17 +761,160 @@ class IEEGRecon:
         # Save as a static image at 300 DPI
         fig.write_image(str(output_dir / 'electrode_visualization.png'), scale=3)
 
+    def module4(self, skip_existing=False):
+        """
+        Module4: Transform electrode coordinates to MNI305 and MNI152 spaces
+        
+        Args:
+            skip_existing (bool): If True, skip processing if output files exist
+        
+        Returns:
+            dict: Paths to output files
+        """
+        # Create output directory
+        output_dir = Path(self.output) / 'ieeg_recon' / 'module4'
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Define output file locations
+        file_locations = {
+            'electrodes2ROI_mni305': output_dir / 'electrodes2ROI_mni305.csv',
+            'electrodes2ROI_mni152': output_dir / 'electrodes2ROI_mni152.csv'
+        }
+
+        # Check if files exist and skip if requested
+        if skip_existing and all(path.exists() for path in file_locations.values()):
+            return file_locations
+
+        # Define input paths
+        recon_native = self.output / 'ieeg_recon' / 'module3' / 'electrodes2ROI.csv'
+        mni305 = Path(self.freeSurfer) / 'subjects' / 'fsaverage'
+        mni152 = Path(self.freeSurfer) / 'subjects' / 'cvs_avg35_inMNI152'
+        talXFM_path = Path(self.freeSurferDir) / 'mri' / 'transforms' / 'talairach.xfm'
+        t1mgz_path = Path(self.freeSurferDir) / 'mri' / 'T1.mgz'
+
+        # Verify input files exist
+        required_paths = {
+            'Module 3 output': recon_native,
+            'MNI 305 template': mni305,
+            'MNI 152 template': mni152,
+            'Talairach transform': talXFM_path,
+            'T1 MGZ file': t1mgz_path
+        }
+        for name, path in required_paths.items():
+            if not path.exists():
+                raise FileNotFoundError(f"{name} not found: {path}")
+
+        # Load electrode data
+        electrodes2ROI = pd.read_csv(recon_native)
+
+        # Get all transformations
+        # ref: https://surfer.nmr.mgh.harvard.edu/fswiki/CoordinateSystems
+        xform_tal = self._read_talairach_xfm(talXFM_path)
+        t1mgz = nib.load(t1mgz_path)
+        Norig = t1mgz.header.get_vox2ras()
+        Torig = t1mgz.header.get_vox2ras_tkr()
+        xform_mni305 = np.dot(xform_tal, np.dot(Norig, np.linalg.inv(Torig)))
+
+        # Load template spaces
+        mni305_t1mgz = nib.load(mni305 / 'mri' / 'T1.mgz')
+        mni152_t1mgz = nib.load(mni152 / 'mri' / 'T1.mgz')
+        xform_mni305_tk_ras = mni305_t1mgz.header.get_vox2ras_tkr()
+        xform_mni152_tk_ras = mni152_t1mgz.header.get_vox2ras_tkr()
+
+        # Define MNI152 transform matrix
+        xform_mni152 = np.array([
+            [0.9975, -0.0073, 0.0176, -0.0429],
+            [0.0146, 1.0009, -0.0024, 1.5496],
+            [-0.0130, -0.0093, 0.9971, 1.1840],
+            [0.0, 0.0, 0.0, 1.0]
+        ])
+
+        # Transform coordinates to MNI305 space
+        surfmm = electrodes2ROI.filter(['surfmm_x', 'surfmm_y', 'surfmm_z']).to_numpy()
+        surfmm_homog = np.hstack((surfmm, np.ones((surfmm.shape[0], 1))))
+        mni305_surfmm = np.round(np.dot(xform_mni305, surfmm_homog.T).T[:, :3], decimals=4)
+        mni305_vox = np.dot(np.linalg.inv(xform_mni305_tk_ras),
+                           np.hstack((mni305_surfmm, np.ones((mni305_surfmm.shape[0], 1)))).T).T[:, :3].astype(int)
+        mni305_mm = nib.affines.apply_affine(mni305_t1mgz.affine, mni305_vox)
+
+        # Transform coordinates to MNI152 space
+        mni305_surfmm_homog = np.hstack((mni305_surfmm, np.ones((mni305_surfmm.shape[0], 1))))
+        mni152_surfmm = np.round(np.dot(xform_mni152, mni305_surfmm_homog.T).T[:, :3], decimals=4)
+        mni152_vox = np.dot(np.linalg.inv(xform_mni152_tk_ras), 
+                           np.hstack((mni152_surfmm, np.ones((mni152_surfmm.shape[0], 1)))).T).T[:, :3].astype(int)
+        mni152_mm = nib.affines.apply_affine(mni152_t1mgz.affine, mni152_vox)
+
+        # Create and save MNI305 coordinates DataFrame
+        electrodes2ROI_mni305 = pd.DataFrame({
+            'labels': electrodes2ROI['labels'],
+            'mni305_mm_x': mni305_mm[:, 0],
+            'mni305_mm_y': mni305_mm[:, 1],
+            'mni305_mm_z': mni305_mm[:, 2],
+            'mni305_surfmm_x': mni305_surfmm[:, 0],
+            'mni305_surfmm_y': mni305_surfmm[:, 1],
+            'mni305_surfmm_z': mni305_surfmm[:, 2],
+            'mni305_vox_x': mni305_vox[:, 0],
+            'mni305_vox_y': mni305_vox[:, 1],
+            'mni305_vox_z': mni305_vox[:, 2],
+            'roi': electrodes2ROI['roi'],
+            'roiNum': electrodes2ROI['roiNum']
+        })
+        electrodes2ROI_mni305.to_csv(file_locations['electrodes2ROI_mni305'], index=False)
+
+        # Create and save MNI152 coordinates DataFrame
+        electrodes2ROI_mni152 = pd.DataFrame({
+            'labels': electrodes2ROI['labels'],
+            'mni152_mm_x': mni152_mm[:, 0],
+            'mni152_mm_y': mni152_mm[:, 1],
+            'mni152_mm_z': mni152_mm[:, 2],
+            'mni152_surfmm_x': mni152_surfmm[:, 0],
+            'mni152_surfmm_y': mni152_surfmm[:, 1],
+            'mni152_surfmm_z': mni152_surfmm[:, 2],
+            'mni152_vox_x': mni152_vox[:, 0],
+            'mni152_vox_y': mni152_vox[:, 1],
+            'mni152_vox_z': mni152_vox[:, 2],
+            'roi': electrodes2ROI['roi'],
+            'roiNum': electrodes2ROI['roiNum']
+        })
+        electrodes2ROI_mni152.to_csv(file_locations['electrodes2ROI_mni152'], index=False)
+
+        return file_locations
+
+    def _read_talairach_xfm(self, fname):
+        """Read the transformation matrix from a FreeSurfer .xfm file.
+        
+        Args:
+            fname (str/Path): Path to FreeSurfer .xfm file
+            
+        Returns:
+            numpy.ndarray: 4x4 transformation matrix
+        """
+        # Skip header lines until we find 'Linear_Transform'
+        xfm = []
+        with open(fname) as f:
+            lines = f.readlines()
+            for i, line in enumerate(lines):
+                if 'Linear_Transform' in line:
+                    # Read the next 3 lines as the transformation matrix
+                    for j in range(3):
+                        numbers = [float(x) for x in lines[i + 1 + j].strip('\n;').split()]
+                        xfm.append(numbers)
+        
+        # Add the last row [0, 0, 0, 1] to make it a 4x4 matrix
+        xfm.append([0.0, 0.0, 0.0, 1.0])
+        return np.array(xfm)
+
 #%%
 def run_pipeline(pre_implant_mri, 
-                 post_implant_ct, 
-                 ct_electrodes, 
-                 output_dir, 
-                 env_path=None, 
-                 freesurfer_dir=None,
-                 modules=['1', '2', '3'], 
-                 skip_existing=False, 
-                 reg_type='gc_noCTthereshold', 
-                 qa_viewer='niplot'):
+                post_implant_ct, 
+                ct_electrodes, 
+                output_dir, 
+                env_path=None, 
+                freesurfer_dir=None,
+                modules=['1', '2', '3', '4'], 
+                skip_existing=False, 
+                reg_type='gc_noCTthereshold', 
+                qa_viewer='niplot'):
     """
     Run the iEEG reconstruction pipeline
     
@@ -781,13 +924,14 @@ def run_pipeline(pre_implant_mri,
         ct_electrodes (str): Path to electrode coordinates CSV
         output_dir (str/Path): Output directory path
         env_path (str/Path, optional): Path to .env file
-        modules (list): List of modules to run ['1', '2']
+        freesurfer_dir (str/Path, optional): Path to FreeSurfer subjects directory
+        modules (list): List of modules to run ['1', '2', '3', '4']
         skip_existing (bool): Skip processing if output files exist
         reg_type (str): Registration type ('gc', 'g', 'gc_noCTthereshold')
         qa_viewer (str): Quality assurance viewer type
     
     Returns:
-        dict: Paths to output files (if module 2 was run)
+        tuple: Paths to output files for modules 2, 3, and 4 (if run)
     """
     # Initialize reconstruction object
     recon = IEEGRecon(
@@ -802,6 +946,7 @@ def run_pipeline(pre_implant_mri,
     # Run selected modules
     file_locations_module2 = None
     file_locations_module3 = None
+    file_locations_module4 = None
     
     if '1' in modules:
         print("Running Module 1...")
@@ -811,7 +956,7 @@ def run_pipeline(pre_implant_mri,
         print("Running Module 2...")
         file_locations_module2 = recon.module2(reg_type, skip_existing=skip_existing)
         
-        print("Output files:")
+        print("Module 2 output files:")
         for name, path in file_locations_module2.items():
             print(f"{name}: {path}")
         
@@ -823,9 +968,21 @@ def run_pipeline(pre_implant_mri,
         project_path = Path(__file__).parent.parent
         atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
         file_locations_module3 = recon.module3(atlas, atlas_lut, diameter=2.5, skip_existing=skip_existing)
+        
+        print("Module 3 output file:")
+        print(f"electrodes2ROI: {file_locations_module3}")
+        
         recon.module3_QualityAssurance(file_locations_module3)
+
+    if '4' in modules:
+        print("Running Module 4...")
+        file_locations_module4 = recon.module4(skip_existing=skip_existing)
+        
+        print("Module 4 output files:")
+        for name, path in file_locations_module4.items():
+            print(f"{name}: {path}")
     
-    return file_locations_module2, file_locations_module3
+    return file_locations_module2, file_locations_module3, file_locations_module4
 
 #%%
 if __name__ == "__main__":
@@ -852,7 +1009,7 @@ if __name__ == "__main__":
         output_dir=output_dir,
         env_path=env_path,
         freesurfer_dir=freesurfer_dir,
-        modules=['1', '2', '3'],
+        modules=['1', '2', '3', '4'],
         skip_existing=True,
         reg_type='gc_noCTthereshold',  # Default registration type
         qa_viewer='niplot'  # Default viewer
