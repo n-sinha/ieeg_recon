@@ -800,7 +800,8 @@ def run_pipeline(pre_implant_mri,
     )
     
     # Run selected modules
-    file_locations = None
+    file_locations_module2 = None
+    file_locations_module3 = None
     
     if '1' in modules:
         print("Running Module 1...")
@@ -808,23 +809,23 @@ def run_pipeline(pre_implant_mri,
     
     if '2' in modules:
         print("Running Module 2...")
-        file_locations = recon.module2(reg_type, skip_existing=skip_existing)
+        file_locations_module2 = recon.module2(reg_type, skip_existing=skip_existing)
         
         print("Output files:")
-        for name, path in file_locations.items():
+        for name, path in file_locations_module2.items():
             print(f"{name}: {path}")
         
-        recon.module2_QualityAssurance(file_locations, qa_viewer)
+        recon.module2_QualityAssurance(file_locations_module2, qa_viewer)
 
     if '3' in modules:
         print("Running Module 3...")
         atlas = freesurfer_dir / 'mri' / 'aparc+aseg.mgz'
         project_path = Path(__file__).parent.parent
         atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
-        recon_file = recon.module3(atlas, atlas_lut, diameter=2.5, skip_existing=skip_existing)
-        recon.module3_QualityAssurance(recon_file)
+        file_locations_module3 = recon.module3(atlas, atlas_lut, diameter=2.5, skip_existing=skip_existing)
+        recon.module3_QualityAssurance(file_locations_module3)
     
-    return file_locations
+    return file_locations_module2, file_locations_module3
 
 #%%
 if __name__ == "__main__":
