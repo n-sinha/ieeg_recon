@@ -25,8 +25,8 @@ def main():
                        help='Path to FreeSurfer directory (optional)')
     parser.add_argument('--env-path', type=str, default='.env',
                        help='Path to environment file')
-    parser.add_argument('--modules', type=str, default='1,2,3',
-                       help='Modules to run (comma-separated, e.g., "1,2,3")')
+    parser.add_argument('--modules', type=str, default='1,2,3,4',
+                       help='Modules to run (comma-separated, e.g., "1,2,3,4")')
     parser.add_argument('--skip-existing', action='store_true',
                        help='Skip processing if output files exist')
     parser.add_argument('--reg-type', type=str, default='gc_noCTthereshold',
@@ -58,7 +58,7 @@ def main():
     # Validate modules format and content
     try:
         modules = [m.strip() for m in args.modules.split(',')]
-        valid_modules = {'1', '2', '3'}
+        valid_modules = {'1', '2', '3', '4'}
         invalid_modules = set(modules) - valid_modules
         if invalid_modules:
             raise ValueError(f"Invalid modules specified: {invalid_modules}. Valid modules are: {valid_modules}")

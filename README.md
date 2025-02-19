@@ -89,7 +89,7 @@ Required:
 Optional:
 - `--freesurfer-dir`: Path to FreeSurfer directory
 - `--env-path`: Path to environment file (default: '.env')
-- `--modules`: Modules to run (comma-separated, e.g., "1,2,3", default: "1,2,3")
+- `--modules`: Modules to run (comma-separated, e.g., "1,2,3,4", default: "1,2,3,4")
 - `--skip-existing`: Skip processing if output files exist
 - `--reg-type`: Registration type ('gc', 'g', 'gc_noCTthereshold', default: 'gc_noCTthereshold')
 - `--qa-viewer`: Quality assurance viewer type ('freeview', 'freeview_snapshot', 'niplot', 'itksnap', 'none', default: 'niplot')
@@ -107,6 +107,9 @@ Performs CT-MRI co-registration with options for:
 
 #### Module 3: ROI Mapping
 Maps electrodes to anatomical regions using an atlas and provides quality assurance visualization.
+
+#### Module 4: MNI Space Transformation
+Transforms electrode coordinates to MNI305 and MNI152 standard spaces for cross-subject comparisons and group analyses.
 
 ## Output Structure
 
