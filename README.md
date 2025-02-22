@@ -61,11 +61,24 @@ There are two ways to install this package:
    SUBJECTS_DIR=/path/to/subjects_dir
    ```
 
+   Example of a configured .env file:
+   ```bash
+   # FSL Configuration
+   FSL_DIR=/usr/local/fsl
+   FSL_OUTPUT_TYPE=NIFTI_GZ
+
+   # ITK-SNAP Configuration
+   ITKSNAP_DIR=/Applications/ITK-SNAP.app/Contents/bin
+
+   # FreeSurfer Configuration
+   FREESURFER_HOME=/Applications/freesurfer/7.3.2
+   SUBJECTS_DIR=/Applications/freesurfer/7.3.2/subjects
+   ```
+
 After installation, you can import the package in Python:
 ```python
 from ieeg_recon import IEEGRecon, run_pipeline
 ```
-
 ## Usage
 
 The pipeline can be run using the command-line interface:
@@ -127,7 +140,6 @@ output_dir/
     ├── electrodes2ROI.csv       # Mapping of electrodes to regions of interest
     └── electrode_visualization.html  # Interactive 3D visualization
 ```
-
 ## Quality Assurance
 
 The pipeline includes comprehensive quality assurance tools:
@@ -145,3 +157,5 @@ If you use this software in your research, please cite:
 ## Support
 
 For bug reports and feature requests, please use the [GitHub Issue Tracker](https://github.com/n-sinha/ieeg_recon/issues).
+
+
