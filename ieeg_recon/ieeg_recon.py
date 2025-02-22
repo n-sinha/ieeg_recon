@@ -14,6 +14,8 @@ import trimesh
 from nilearn import plotting as niplot
 from matplotlib.colors import LinearSegmentedColormap
 import plotly.graph_objects as go
+import plotly.express as px
+from IPython import embed
 
 #%% 
 class IEEGRecon:
@@ -903,6 +905,117 @@ class IEEGRecon:
         # Add the last row [0, 0, 0, 1] to make it a 4x4 matrix
         xfm.append([0.0, 0.0, 0.0, 1.0])
         return np.array(xfm)
+    
+    def module4_snap_to_atlas(self, 
+                              standard_space='mni152', 
+                              atlas='aparc+aseg.mgz', 
+                              atlas_lut='desikanKilliany.csv', 
+                              diameter=2.5) -> Path:
+        """
+        Module4: Snap electrodes to atlas ROIs in standard space
+        
+        Args:
+            standard_space (str): Standard space to use - must be either 'mni305' or 'mni152'
+            atlas (str/Path): Path to atlas NIFTI file
+            atlas_lut (str/Path): Path to lookup table CSV/txt file
+            diameter (float): Maximum distance in mm for electrode-to-ROI mapping (default: 2.5)
+            
+        Raises:
+            ValueError: If standard_space is not 'mni305' or 'mni152'
+        """
+        # Validate standard space input
+        if standard_space.lower() not in ['mni305', 'mni152']:
+            raise ValueError("standard_space must be either 'mni305' or 'mni152'")
+        
+        if standard_space == 'mni305':
+            standard_file = self.output / 'ieeg_recon' / 'module4' / 'electrodes2ROI_mni305.csv'
+            atlas_path = Path(self.freeSurfer) / 'subjects' / 'fsaverage'
+        elif standard_space == 'mni152':
+            standard_file = self.output / 'ieeg_recon' / 'module4' / 'electrodes2ROI_mni152.csv'
+            atlas_path = Path(self.freeSurfer) / 'subjects' / 'cvs_avg35_inMNI152'
+
+        # Load template spaces
+        atlas_img = nib.load(atlas_path / 'mri' / 'aparc+aseg.mgz')
+        atlas_data = atlas_img.get_fdata()
+        lut = pd.read_csv(atlas_lut, sep=None, engine='python')
+        recon_standard = pd.read_csv(standard_file)
+        channels_to_snap = recon_standard[~recon_standard['roi'].isin(['white-matter', 'outside-brain'])]
+        channels_to_skip = recon_standard[recon_standard['roi'].isin(['white-matter', 'outside-brain'])]
+
+        # Get atlas ROI coordinates
+        atlas_voxels = []
+        for _, row in lut.iterrows():
+            vox = np.array(np.where(atlas_data == row['roiNum'])).T
+            if len(vox) > 0:
+                atlas_voxels.append(np.column_stack([vox, np.full(len(vox), row['roiNum'])]))
+        
+        atlas_voxels = np.vstack(atlas_voxels)
+
+        # Convert atlas voxels to mm space
+        vox_homog = np.hstack((atlas_voxels[:, :3], np.ones((len(atlas_voxels), 1))))
+        atlas_mm = np.dot(atlas_img.affine, vox_homog.T).T[:, :3]
+
+        # Find nearest ROI for each electrode
+        tree = cKDTree(atlas_mm)
+        dist_mm, idx = tree.query(channels_to_snap.filter([f'{standard_space}_mm_x', 
+                                                           f'{standard_space}_mm_y', 
+                                                           f'{standard_space}_mm_z']), k=1)
+        
+         # Get ROI numbers for each electrode
+        implant2roiNum = atlas_voxels[idx, 3].astype(int)
+        # Create mask for channels to snap
+        mask = channels_to_snap['roiNum'].astype(int) != implant2roiNum
+        channels_to_snap = channels_to_snap[mask]
+
+        for rowidx, row in channels_to_snap.iterrows():
+            target_roi = atlas_mm[np.where(atlas_voxels[:,3] == row['roiNum'])]
+            target_roi_tree = cKDTree(target_roi)
+            dist_mm, idx = target_roi_tree.query(np.array([row[f'{standard_space}_mm_x'], 
+                                               row[f'{standard_space}_mm_y'], 
+                                               row[f'{standard_space}_mm_z']]), k=1)
+            
+            channels_to_snap.loc[rowidx, f'{standard_space}_mm_x'] = target_roi[idx, 0]
+            channels_to_snap.loc[rowidx, f'{standard_space}_mm_y'] = target_roi[idx, 1]
+            channels_to_snap.loc[rowidx, f'{standard_space}_mm_z'] = target_roi[idx, 2]
+
+        # convert mm to voxels
+        mm_homog = np.hstack((channels_to_snap.filter([f'{standard_space}_mm_x', 
+                                                      f'{standard_space}_mm_y', 
+                                                      f'{standard_space}_mm_z']), 
+                              np.ones((len(channels_to_snap), 1))))
+        
+        voxels = np.dot(np.linalg.inv(atlas_img.affine), mm_homog.T).T[:, :3].astype(int)
+        channels_to_snap[f'{standard_space}_vox_x'] = voxels[:, 0]
+        channels_to_snap[f'{standard_space}_vox_y'] = voxels[:, 1]
+        channels_to_snap[f'{standard_space}_vox_z'] = voxels[:, 2]
+
+        xform_vox2ras = atlas_img.header.get_vox2ras()
+        voxels_homog = np.hstack((channels_to_snap.filter([f'{standard_space}_vox_x', 
+                                                          f'{standard_space}_vox_y', 
+                                                          f'{standard_space}_vox_z']).to_numpy(), 
+                                  np.ones((len(channels_to_snap), 1))))
+        surf_mm = np.dot(xform_vox2ras, voxels_homog.T).T[:, :3]
+        channels_to_snap[f'{standard_space}_mm_x'] = surf_mm[:, 0]
+        channels_to_snap[f'{standard_space}_mm_y'] = surf_mm[:, 1]
+        channels_to_snap[f'{standard_space}_mm_z'] = surf_mm[:, 2]
+
+        # replace recon_standard with channels_to_snap where index matches
+        recon_standard.loc[channels_to_snap.index, :] = channels_to_snap
+
+        # Create new filename with 'corrected' in it
+        standard_file_path = Path(standard_file)
+        corrected_file = standard_file_path.parent / f'{standard_file_path.stem}_corrected.csv'
+
+        # Rename columns by removing standard_space prefix
+        column_mapping = {col: col.replace(f'{standard_space}_', '') 
+                         for col in recon_standard.columns 
+                         if f'{standard_space}_' in col}
+        recon_standard = recon_standard.rename(columns=column_mapping)
+
+        # Save to new file
+        recon_standard.to_csv(corrected_file, index=False)
+
+        return corrected_file
 
 #%%
 def run_pipeline(pre_implant_mri, 
@@ -933,6 +1046,8 @@ def run_pipeline(pre_implant_mri,
     Returns:
         tuple: Paths to output files for modules 2, 3, and 4 (if run)
     """
+    # Set project path
+    project_path = Path(__file__).parent.parent
     # Initialize reconstruction object
     recon = IEEGRecon(
         pre_implant_mri=pre_implant_mri,
@@ -965,7 +1080,6 @@ def run_pipeline(pre_implant_mri,
     if '3' in modules:
         print("Running Module 3...")
         atlas = freesurfer_dir / 'mri' / 'aparc+aseg.mgz'
-        project_path = Path(__file__).parent.parent
         atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
         file_locations_module3 = recon.module3(atlas, atlas_lut, diameter=2.5, skip_existing=skip_existing)
         
@@ -977,12 +1091,29 @@ def run_pipeline(pre_implant_mri,
     if '4' in modules:
         print("Running Module 4...")
         file_locations_module4 = recon.module4(skip_existing=skip_existing)
-        
-        print("Module 4 output files:")
-        for name, path in file_locations_module4.items():
-            print(f"{name}: {path}")
+        atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
+        file_locations_module4_mni152 = recon.module4_snap_to_atlas(standard_space='mni152',
+                                                          atlas='aparc+aseg.mgz',
+                                                          atlas_lut=atlas_lut,
+                                                          diameter=2.5)
+        file_locations_module4_mni305 = recon.module4_snap_to_atlas(standard_space='mni305',
+                                                          atlas='aparc+aseg.mgz',
+                                                          atlas_lut=atlas_lut,
+                                                          diameter=2.5)
+        print(f"Module 4 output files:")
+        print(f"MNI152: {file_locations_module4_mni152}")
+        print(f"MNI305: {file_locations_module4_mni305}")
+
+        # make a dictionary of the file locations for each module
+        file_locations = {
+            'module2': file_locations_module2,
+            'module3': file_locations_module3,
+            'module4': file_locations_module4,
+            'module4_mni152': file_locations_module4_mni152,
+            'module4_mni305': file_locations_module4_mni305
+        }
     
-    return file_locations_module2, file_locations_module3, file_locations_module4
+    return file_locations
 
 #%%
 if __name__ == "__main__":
