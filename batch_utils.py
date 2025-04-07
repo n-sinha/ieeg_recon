@@ -4,6 +4,8 @@ from pathlib import Path
 from ieeg_recon.ieeg_recon import run_pipeline
 import subprocess
 import pandas as pd
+from IPython import embed
+
 #%%
 
 def setup_subject_paths(project_path, subject_id):
@@ -31,11 +33,6 @@ def setup_subject_paths(project_path, subject_id):
         # Pre-implant MRI from FreeSurfer
         't1_mgz': subject_path / 'derivatives' / 'freesurfer' / 'mri' / 'T1.mgz',
         't1': subject_path / 'derivatives' / 'freesurfer' / 'mri' / 'T1.nii.gz',
-        # Post-implant CT scan
-        'ct': subject_path / 'ses-clinical01' / 'ct' / f'{subject_id}_ses-clinical01_acq-3D_space-T01ct_ct.nii.gz',
-        
-        # Electrode locations from CT
-        'elec': subject_path / 'ses-clinical01' / 'ieeg' / f'{subject_id}_ses-clinical01_space-T01ct_desc-vox_electrodes.txt',
         
         # Output directory
         'output-dir': subject_path / 'derivatives', 
@@ -43,6 +40,16 @@ def setup_subject_paths(project_path, subject_id):
         # FreeSurfer directory
         'freesurfer-dir': subject_path / 'derivatives' / 'freesurfer'
     }
+    
+    # Find CT scan using glob
+    ct_path = subject_path / 'ses-clinical01' / 'ct'
+    ct_files = list(ct_path.rglob('*CT.nii.gz'))
+    paths_dict['ct'] = ct_files[0] if ct_files else ''
+    
+    # Find electrode file using glob
+    ieeg_path = subject_path / 'ses-clinical01' / 'ieeg'
+    electrode_files = list(ieeg_path.rglob('*electrodes.txt'))
+    paths_dict['elec'] = electrode_files[0] if electrode_files else ''
     
     # Convert T1.mgz to T1.nii.gz if needed
     if paths_dict['t1_mgz'].exists() and paths_dict['t1_mgz'].suffix == '.mgz' and not paths_dict['t1'].exists():
@@ -156,7 +163,7 @@ if __name__ == "__main__":
     project_path = Path('/Users/nishant/Dropbox/Sinha/Lab/Research/epi_t3_iEEG/data/BIDS')
     
     # Example 1: Get data for all subjects
-    all_subjects_df = find_subject_data(project_path, subject_RID= ['sub-RID1036', 'sub-RID1041'])
+    all_subjects_df = find_subject_data(project_path, subject_RID= ['sub-RID0782', 'sub-RID0923', 'sub-RID0885'])
     all_subjects_df.to_csv('all_subjects_paths.csv', index=False)
     
     # Example 2: Get data for a specific subject

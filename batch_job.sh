@@ -18,10 +18,10 @@ tail -n +2 "$csv_file" | while IFS=, read -r subject_id t1_mgz t1 ct elec output
         --elec "$elec" \
         --output-dir "$output_dir" \
         --freesurfer-dir "$freesurfer_dir" \
-        --qa-viewer 'freeview_snapshot' \
+        --qa-viewer 'niplot' \
         --reg-type 'gc_noCTthereshold' \
         --skip-existing \
-        --modules '2'
+        --modules '2,3'
     
     # Print completion message
     echo "Completed processing $subject_id"
