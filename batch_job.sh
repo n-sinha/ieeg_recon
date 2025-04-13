@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Path to the CSV file
-csv_file="all_subjects_paths.csv"
+csv_file="all_subjects_paths_process2.csv"
 
 # Skip the header line and process each subject
 tail -n +2 "$csv_file" | while IFS=, read -r subject_id t1_mgz t1 ct elec output_dir freesurfer_dir; do
@@ -20,8 +20,7 @@ tail -n +2 "$csv_file" | while IFS=, read -r subject_id t1_mgz t1 ct elec output
         --freesurfer-dir "$freesurfer_dir" \
         --qa-viewer 'niplot' \
         --reg-type 'gc_noCTthereshold' \
-        --skip-existing \
-        --modules '2,3'
+        --modules '4'
     
     # Print completion message
     echo "Completed processing $subject_id"

@@ -41,9 +41,11 @@ def setup_subject_paths(project_path, subject_id):
         'freesurfer-dir': subject_path / 'derivatives' / 'freesurfer'
     }
     
-    # Find CT scan using glob
+    # Find CT scan using glob (case-insensitive)
     ct_path = subject_path / 'ses-clinical01' / 'ct'
-    ct_files = list(ct_path.rglob('*CT.nii.gz'))
+    ct_files = []
+    for pattern in ['*CT.nii.gz', '*ct.nii.gz']:
+        ct_files.extend(list(ct_path.rglob(pattern)))
     paths_dict['ct'] = ct_files[0] if ct_files else ''
     
     # Find electrode file using glob
@@ -163,7 +165,7 @@ if __name__ == "__main__":
     project_path = Path('/Users/nishant/Dropbox/Sinha/Lab/Research/epi_t3_iEEG/data/BIDS')
     
     # Example 1: Get data for all subjects
-    all_subjects_df = find_subject_data(project_path, subject_RID= ['sub-RID0782', 'sub-RID0923', 'sub-RID0885'])
+    all_subjects_df = find_subject_data(project_path)
     all_subjects_df.to_csv('all_subjects_paths.csv', index=False)
     
     # Example 2: Get data for a specific subject
