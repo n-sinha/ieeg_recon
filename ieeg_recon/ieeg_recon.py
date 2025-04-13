@@ -834,17 +834,17 @@ class IEEGRecon:
         # Transform coordinates to MNI305 space
         surfmm = electrodes2ROI.filter(['surfmm_x', 'surfmm_y', 'surfmm_z']).to_numpy()
         surfmm_homog = np.hstack((surfmm, np.ones((surfmm.shape[0], 1))))
-        mni305_surfmm = np.round(np.dot(xform_mni305, surfmm_homog.T).T[:, :3], decimals=4)
-        mni305_vox = np.dot(np.linalg.inv(xform_mni305_tk_ras),
-                           np.hstack((mni305_surfmm, np.ones((mni305_surfmm.shape[0], 1)))).T).T[:, :3].astype(int)
-        mni305_mm = nib.affines.apply_affine(mni305_t1mgz.affine, mni305_vox)
+        mni305_mm = np.round(np.dot(xform_mni305, surfmm_homog.T).T[:, :3], decimals=4)
+        mni305_vox = nib.affines.apply_affine(np.linalg.inv(mni305_t1mgz.affine), mni305_mm)
+        mni305_surfmm = np.dot(xform_mni305_tk_ras,
+                           np.hstack((mni305_vox, np.ones((mni305_vox.shape[0], 1)))).T).T[:, :3]
 
         # Transform coordinates to MNI152 space
-        mni305_surfmm_homog = np.hstack((mni305_surfmm, np.ones((mni305_surfmm.shape[0], 1))))
-        mni152_surfmm = np.round(np.dot(xform_mni152, mni305_surfmm_homog.T).T[:, :3], decimals=4)
-        mni152_vox = np.dot(np.linalg.inv(xform_mni152_tk_ras), 
-                           np.hstack((mni152_surfmm, np.ones((mni152_surfmm.shape[0], 1)))).T).T[:, :3].astype(int)
-        mni152_mm = nib.affines.apply_affine(mni152_t1mgz.affine, mni152_vox)
+        mni305_mm_homog = np.hstack((mni305_mm, np.ones((mni305_mm.shape[0], 1))))
+        mni152_mm = np.round(np.dot(xform_mni152, mni305_mm_homog.T).T[:, :3], decimals=4)
+        mni152_vox = nib.affines.apply_affine(np.linalg.inv(mni152_t1mgz.affine), mni152_mm)
+        mni152_surfmm = np.dot(xform_mni152_tk_ras,
+                           np.hstack((mni152_vox, np.ones((mni152_vox.shape[0], 1)))).T).T[:, :3]
 
         # Create and save MNI305 coordinates DataFrame
         electrodes2ROI_mni305 = pd.DataFrame({
@@ -855,9 +855,9 @@ class IEEGRecon:
             'mni305_surfmm_x': mni305_surfmm[:, 0],
             'mni305_surfmm_y': mni305_surfmm[:, 1],
             'mni305_surfmm_z': mni305_surfmm[:, 2],
-            'mni305_vox_x': mni305_vox[:, 0],
-            'mni305_vox_y': mni305_vox[:, 1],
-            'mni305_vox_z': mni305_vox[:, 2],
+            'mni305_vox_x': mni305_vox[:, 0].astype(int),
+            'mni305_vox_y': mni305_vox[:, 1].astype(int),
+            'mni305_vox_z': mni305_vox[:, 2].astype(int),
             'roi': electrodes2ROI['roi'],
             'roiNum': electrodes2ROI['roiNum']
         })
@@ -872,9 +872,9 @@ class IEEGRecon:
             'mni152_surfmm_x': mni152_surfmm[:, 0],
             'mni152_surfmm_y': mni152_surfmm[:, 1],
             'mni152_surfmm_z': mni152_surfmm[:, 2],
-            'mni152_vox_x': mni152_vox[:, 0],
-            'mni152_vox_y': mni152_vox[:, 1],
-            'mni152_vox_z': mni152_vox[:, 2],
+            'mni152_vox_x': mni152_vox[:, 0].astype(int),
+            'mni152_vox_y': mni152_vox[:, 1].astype(int),
+            'mni152_vox_z': mni152_vox[:, 2].astype(int),
             'roi': electrodes2ROI['roi'],
             'roiNum': electrodes2ROI['roiNum']
         })
@@ -995,9 +995,9 @@ class IEEGRecon:
                                                           f'{standard_space}_vox_z']).to_numpy(), 
                                   np.ones((len(channels_to_snap), 1))))
         surf_mm = np.dot(xform_vox2ras, voxels_homog.T).T[:, :3]
-        channels_to_snap[f'{standard_space}_mm_x'] = surf_mm[:, 0]
-        channels_to_snap[f'{standard_space}_mm_y'] = surf_mm[:, 1]
-        channels_to_snap[f'{standard_space}_mm_z'] = surf_mm[:, 2]
+        channels_to_snap[f'{standard_space}_surfmm_x'] = surf_mm[:, 0]
+        channels_to_snap[f'{standard_space}_surfmm_y'] = surf_mm[:, 1]
+        channels_to_snap[f'{standard_space}_surfmm_z'] = surf_mm[:, 2]
 
         # replace recon_standard with channels_to_snap where index matches
         recon_standard.loc[channels_to_snap.index, :] = channels_to_snap
@@ -1140,8 +1140,8 @@ if __name__ == "__main__":
         output_dir=output_dir,
         env_path=env_path,
         freesurfer_dir=freesurfer_dir,
-        modules=['1', '2', '3', '4'],
-        skip_existing=True,
+        modules=['4'],
+        skip_existing=False,
         reg_type='gc_noCTthereshold',  # Default registration type
         qa_viewer='niplot'  # Default viewer
     )
