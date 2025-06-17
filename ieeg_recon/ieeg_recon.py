@@ -1184,7 +1184,7 @@ if __name__ == "__main__":
     post_implant_ct = project_path / 'data' / 'sub-Case001' / 'ses-postimplant' / 'ct' / 'sub-Case001_ses-postimplant_ct.nii.gz'
     ct_electrodes = project_path / 'data' / 'sub-Case001' / 'ses-postimplant' / 'ieeg' / 'sub-Case001_ses-postimplant_ct.txt'
     output_dir = project_path / 'data' / 'output' / 'sub-Case001'
-    freesurfer_dir = project_path / 'data' / 'sub-Case001' / 'derivatives' / 'freesurfer'
+    freesurfer_dir = project_path / 'data' / 'sub-Case001' / 'derivatives' / 'ieeg_recon'
    
     # Set config path (defaults to .env in same directory as script)
     env_path = project_path / '.env'
