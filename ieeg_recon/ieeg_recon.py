@@ -15,7 +15,6 @@ from nilearn import plotting as niplot
 from matplotlib.colors import LinearSegmentedColormap
 import plotly.graph_objects as go
 import plotly.express as px
-from IPython import embed
 
 #%% 
 class IEEGRecon:
@@ -143,7 +142,8 @@ class IEEGRecon:
             'electrodes_inMRI': output_dir / 'electrodes_inMRI.nii.gz',
             'electrodes_inMRI_freesurferLUT': output_dir / 'electrodes_inMRI_freesurferLUT.txt',
             'electrodes_inMRImm': output_dir / 'electrodes_inMRImm.txt',
-            'electrodes_inMRIvox': output_dir / 'electrodes_inMRIvox.txt'
+            'electrodes_inMRIvox': output_dir / 'electrodes_inMRIvox.txt',
+            'itksnap_workspace': output_dir / 'electrode_workspace.itksnap'
         }
 
         # Check if files exist and skip if requested
@@ -172,6 +172,9 @@ class IEEGRecon:
         
         # Create electrode spheres
         self._create_electrode_spheres(output_dir)
+        
+        # Create ITK-SNAP workspace
+        self._create_itksnap_workspace(output_dir)
 
         return file_locations
 
@@ -319,15 +322,22 @@ class IEEGRecon:
             index=False
         )
 
-        # Find points within 2mm of each electrode
-        tree = cKDTree(world_coords)
-        dist, idx = tree.query(electrodes_mm, k=1)
-        
         # Create electrode map
         electrode_data = blank_data.copy()
-        mask = dist <= 2
-        for i, (valid, coord) in enumerate(zip(mask, vox_coords[idx]), 1):
-            if valid:
+        
+        # Create KDTree for efficient nearest neighbor search
+        tree = cKDTree(world_coords)
+        
+        # For each electrode, find all points within the sphere radius
+        sphere_radius = 2  # 2mm radius for each electrode sphere
+        
+        for i, electrode_pos in enumerate(electrodes_mm, 1):
+            # Find all points within sphere_radius of this electrode
+            indices = tree.query_ball_point(electrode_pos, sphere_radius)
+            
+            # Place electrode label at all points within the sphere
+            for idx in indices:
+                coord = vox_coords[idx]
                 electrode_data[tuple(coord)] = i
 
         # Save electrode map
@@ -335,6 +345,48 @@ class IEEGRecon:
             nib.Nifti1Image(electrode_data, ct_affine),
             output_dir / 'electrodes_inMRI.nii.gz'
         )
+
+    def _create_itksnap_workspace(self, output_dir):
+        """
+        Create an ITK-SNAP workspace file for visualizing electrode spheres
+        
+        This method calls the external create_itksnap_workspace.py script to generate
+        the workspace file, keeping the main ieeg_recon.py file clean and modular.
+        
+        Args:
+            output_dir (Path): Output directory for module 2
+        """
+        try:
+            # Import the external function dynamically
+            import sys
+            from pathlib import Path
+            
+            # Add the current directory to the path if not already there
+            current_dir = Path(__file__).parent
+            if str(current_dir) not in sys.path:
+                sys.path.insert(0, str(current_dir))
+            
+            from create_itksnap_workspace import create_itksnap_workspace
+            
+            # Define file paths
+            pre_implant_mri = self.preImplantMRI
+            ct_to_mri = output_dir / 'ct_to_mri.nii.gz'
+            electrodes_inMRI = output_dir / 'electrodes_inMRI.nii.gz'
+            electrode_names_file = Path(self.output) / 'ieeg_recon/module1/electrode_names.txt'
+            
+            # Call the external function
+            workspace_file = create_itksnap_workspace(
+                output_dir, pre_implant_mri, ct_to_mri, electrodes_inMRI, electrode_names_file
+            )
+            
+            print(f"ITK-SNAP workspace created: {workspace_file}")
+            
+        except ImportError as e:
+            print(f"Warning: Could not import create_itksnap_workspace module: {e}")
+            print("ITK-SNAP workspace creation will be skipped.")
+        except Exception as e:
+            print(f"Warning: Error creating ITK-SNAP workspace: {e}")
+            print("ITK-SNAP workspace creation will be skipped.")
 
     def module2_QualityAssurance(self, file_locations, imageviewer):
         """
@@ -399,12 +451,19 @@ class IEEGRecon:
                     "-ss", str(output_dir / "QA_registation_3D.png")
                 ], check=True)
             elif imageviewer == 'itksnap':
-                # Open interactive ITK-SNAP session
-                subprocess.run([
-                    f"{self.itksnap}/itksnap",
-                    "-g", self.preImplantMRI,
-                    "-o", file_locations['ct_to_mri']
-                ], check=True)
+                # Open interactive ITK-SNAP session using the workspace file
+                if 'itksnap_workspace' in file_locations and file_locations['itksnap_workspace'].exists():
+                    subprocess.run([
+                        f"{self.itksnap}/itksnap",
+                        "-w", str(file_locations['itksnap_workspace'])
+                    ], check=True)
+                else:
+                    # Fallback to opening individual files if workspace doesn't exist
+                    subprocess.run([
+                        f"{self.itksnap}/itksnap",
+                        "-g", self.preImplantMRI,
+                        "-o", file_locations['ct_to_mri']
+                    ], check=True)
             elif imageviewer == 'niplot':
                 # Create custom colormap that is transparent for zeros and scales from yellow to red
                 colors = [(0, 0, 0, 0),          # transparent
@@ -1121,11 +1180,11 @@ if __name__ == "__main__":
     project_path = Path(__file__).parent.parent
    
     # Set paths for the selected subject
-    pre_implant_mri = project_path / 'data' / 'sub-RID0031' / 'derivatives' / 'freesurfer' / 'mri' / 'T1.nii.gz'
-    post_implant_ct = project_path / 'data' / 'sub-RID0031' / 'ses-clinical01' / 'ct' / 'sub-RID0031_ses-clinical01_acq-3D_space-T01ct_ct.nii.gz'
-    ct_electrodes = project_path / 'data' / 'sub-RID0031' / 'ses-clinical01' / 'ieeg' / 'sub-RID0031_ses-clinical01_space-T01ct_desc-vox_electrodes.txt'
-    output_dir = project_path / 'data' / 'output' / 'sub-RID0031'
-    freesurfer_dir = project_path / 'data' / 'sub-RID0031' / 'derivatives' / 'freesurfer'
+    pre_implant_mri = project_path / 'data' / 'sub-Case001' / 'derivatives' / 'freesurfer' / 'mri' / 'T1.nii.gz'
+    post_implant_ct = project_path / 'data' / 'sub-Case001' / 'ses-postimplant' / 'ct' / 'sub-Case001_ses-postimplant_ct.nii.gz'
+    ct_electrodes = project_path / 'data' / 'sub-Case001' / 'ses-postimplant' / 'ieeg' / 'sub-Case001_ses-postimplant_ct.txt'
+    output_dir = project_path / 'data' / 'output' / 'sub-Case001'
+    freesurfer_dir = project_path / 'data' / 'sub-Case001' / 'derivatives' / 'freesurfer'
    
     # Set config path (defaults to .env in same directory as script)
     env_path = project_path / '.env'
@@ -1140,7 +1199,7 @@ if __name__ == "__main__":
         output_dir=output_dir,
         env_path=env_path,
         freesurfer_dir=freesurfer_dir,
-        modules=['4'],
+        modules=['1', '2', '3', '4'],
         skip_existing=False,
         reg_type='gc_noCTthereshold',  # Default registration type
         qa_viewer='niplot'  # Default viewer
