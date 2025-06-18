@@ -121,13 +121,14 @@ class IEEGRecon:
             fmt='%.2f'  # Use float format
         )
 
-    def module2(self, reg_type, skip_existing=False):
+    def module2(self, reg_type, skip_existing=False, save_channels=False):
         """
         Module2: Outputs go in output:ieeg_recon/module2 folder
         
         Args:
             reg_type (str): Registration type - 'gc', 'g', or 'gc_noCTthereshold'
             skip_existing (bool): If True, skip processing if output files exist
+            save_channels (bool): If True, save individual electrode channels as separate files
         
         Returns:
             dict: Paths to output files
@@ -171,7 +172,7 @@ class IEEGRecon:
         self._transform_electrode_coordinates(output_dir)
         
         # Create electrode spheres
-        self._create_electrode_spheres(output_dir)
+        self._create_electrode_spheres(output_dir, save_channels=save_channels)
         
         # Create ITK-SNAP workspace
         self._create_itksnap_workspace(output_dir)
@@ -283,7 +284,7 @@ class IEEGRecon:
             "-vox", str(Path(self.output) / 'ieeg_recon/module1/electrodes_inCTvox.txt')
         ], stdout=open(output_dir / 'electrodes_inMRIvox.txt', 'w'), check=True)
 
-    def _create_electrode_spheres(self, output_dir):
+    def _create_electrode_spheres(self, output_dir, save_channels=False):
         """Create spheres for electrodes in registered space"""
         # Load registered CT data
         ct_img = nib.load(output_dir / 'ct_to_mri.nii.gz')
@@ -334,11 +335,35 @@ class IEEGRecon:
         for i, electrode_pos in enumerate(electrodes_mm, 1):
             # Find all points within sphere_radius of this electrode
             indices = tree.query_ball_point(electrode_pos, sphere_radius)
+
+            # Create individual channel data for this electrode
+            channel_data = blank_data.copy()
+            channel_name = electrode_names[i-1]
             
             # Place electrode label at all points within the sphere
             for idx in indices:
                 coord = vox_coords[idx]
                 electrode_data[tuple(coord)] = i
+                channel_data[tuple(coord)] = 1
+
+            # Save individual channel if requested
+            if save_channels:
+                channels_dir = output_dir / 'channels'
+                channels_dir.mkdir(exist_ok=True)
+                
+                # Clean the channel name for filename (remove special characters)
+                clean_name = "".join(c for c in channel_name if c.isalnum() or c in ('_', '-'))
+                
+                # Save the channel data as a nifti file           
+                nib.save(
+                     nib.Nifti1Image(channel_data, ct_affine),
+                     channels_dir / f'channel_{clean_name}.nii.gz'
+                )
+        
+        # Print summary if channels were saved
+        if save_channels:
+            print(f"✅ Individual electrode channels saved to: {output_dir / 'channels'}")
+            print(f"   Created {len(electrodes_mm)} individual channel files")
 
         # Save electrode map
         nib.save(
@@ -1084,7 +1109,8 @@ def run_pipeline(pre_implant_mri,
                 env_path=None, 
                 freesurfer_dir=None,
                 modules=['1', '2', '3', '4'], 
-                skip_existing=False, 
+                skip_existing=False,
+                save_channels=False,
                 reg_type='gc_noCTthereshold', 
                 qa_viewer='niplot'):
     """
@@ -1128,7 +1154,7 @@ def run_pipeline(pre_implant_mri,
     
     if '2' in modules:
         print("Running Module 2...")
-        file_locations_module2 = recon.module2(reg_type, skip_existing=skip_existing)
+        file_locations_module2 = recon.module2(reg_type, skip_existing=skip_existing, save_channels=save_channels)
         
         print("Module 2 output files:")
         for name, path in file_locations_module2.items():
@@ -1183,7 +1209,7 @@ if __name__ == "__main__":
     pre_implant_mri = project_path / 'data' / 'sub-Case001' / 'derivatives' / 'freesurfer' / 'mri' / 'T1.nii.gz'
     post_implant_ct = project_path / 'data' / 'sub-Case001' / 'ses-postimplant' / 'ct' / 'sub-Case001_ses-postimplant_ct.nii.gz'
     ct_electrodes = project_path / 'data' / 'sub-Case001' / 'ses-postimplant' / 'ieeg' / 'sub-Case001_ses-postimplant_ct.txt'
-    output_dir = project_path / 'data' / 'sub-Case001' / 'derivatives' / 'ieeg_recon'
+    output_dir = project_path / 'data' / 'sub-Case001' / 'derivatives'
     freesurfer_dir = project_path / 'data' / 'sub-Case001' / 'derivatives' / 'freesurfer'
    
     # Set config path (defaults to .env in same directory as script)
@@ -1201,6 +1227,7 @@ if __name__ == "__main__":
         freesurfer_dir=freesurfer_dir,
         modules=['1', '2', '3', '4'],
         skip_existing=False,
+        save_channels=True,
         reg_type='gc_noCTthereshold',  # Default registration type
         qa_viewer='niplot'  # Default viewer
     )
