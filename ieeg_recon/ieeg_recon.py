@@ -1045,10 +1045,6 @@ class IEEGRecon:
             if temp_file.exists():
                 temp_file.unlink()
         
-        # Clean up channels_dir_mni directory and all its contents
-        if channels_dir_mni.exists():
-            shutil.rmtree(channels_dir_mni)
-        
         print("MNI transformation complete!")
 
         # Step 5: Create electrode map in MRI space
