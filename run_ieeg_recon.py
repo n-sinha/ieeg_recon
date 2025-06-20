@@ -29,6 +29,8 @@ def main():
                        help='Modules to run (comma-separated, e.g., "1,2,3,4")')
     parser.add_argument('--skip-existing', action='store_true',
                        help='Skip processing if output files exist')
+    parser.add_argument('--save-channels', action='store_true',
+                       help='Save individual electrode channels as separate files')
     parser.add_argument('--reg-type', type=str, default='gc_noCTthereshold',
                        choices=['gc', 'g', 'gc_noCTthereshold'],
                        help='Registration type')
@@ -86,7 +88,8 @@ def main():
             modules=modules,
             skip_existing=args.skip_existing,
             reg_type=args.reg_type,
-            qa_viewer=args.qa_viewer
+            qa_viewer=args.qa_viewer,
+            save_channels=args.save_channels
         )
         print("Processing complete!")
     except Exception as e:
