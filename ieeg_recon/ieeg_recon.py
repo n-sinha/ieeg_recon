@@ -968,6 +968,18 @@ class IEEGRecon:
             '--interpolation', 'Linear'
         ], check=True)
 
+        # make a png to overlay mni152_template_nii on mri_mni152.nii.gz to check the registration with niplot
+        niplot.plot_roi(
+                    str(mni152_template_nii), 
+                    bg_img=str(file_locations['mri_mni152']), 
+                    title='MNI152 template overlayed on MRI', 
+                    display_mode="mosaic" )
+                
+        # Save the plot
+        plt.savefig(str(output_dir / "mni152_registration_check.png"), 
+                           dpi=300, 
+                           bbox_inches='tight')
+
         # Step 4: Transform each channel to MNI space in a loop
         # get all channels from module2 channels directory
         channels_dir = self.output / 'ieeg_recon' / 'module2' / 'channels'
