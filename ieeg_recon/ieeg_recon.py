@@ -1112,8 +1112,8 @@ class IEEGRecon:
 
         # Define output file locations
         file_locations = {
-            'electrodes2ROI_mni305': output_dir / 'electrodes2ROI_mni305.csv',
-            'electrodes2ROI_mni152': output_dir / 'electrodes2ROI_mni152.csv'
+            'electrodes2ROI_mni305_freesurfer': output_dir / 'electrodes2ROI_mni305_freesurfer.csv',
+            'electrodes2ROI_mni152_freesurfer': output_dir / 'electrodes2ROI_mni152_freesurfer.csv'
         }
 
         # Check if files exist and skip if requested
@@ -1194,7 +1194,7 @@ class IEEGRecon:
             'roi': electrodes2ROI['roi'],
             'roiNum': electrodes2ROI['roiNum']
         })
-        electrodes2ROI_mni305.to_csv(file_locations['electrodes2ROI_mni305'], index=False)
+        electrodes2ROI_mni305.to_csv(file_locations['electrodes2ROI_mni305_freesurfer'], index=False)
 
         # Create and save MNI152 coordinates DataFrame
         electrodes2ROI_mni152 = pd.DataFrame({
@@ -1211,7 +1211,7 @@ class IEEGRecon:
             'roi': electrodes2ROI['roi'],
             'roiNum': electrodes2ROI['roiNum']
         })
-        electrodes2ROI_mni152.to_csv(file_locations['electrodes2ROI_mni152'], index=False)
+        electrodes2ROI_mni152.to_csv(file_locations['electrodes2ROI_mni152_freesurfer'], index=False)
         
         return file_locations
 
@@ -1261,10 +1261,10 @@ class IEEGRecon:
             raise ValueError("standard_space must be either 'mni305' or 'mni152'")
         
         if standard_space == 'mni305':
-            standard_file = self.output / 'ieeg_recon' / 'module4' / 'electrodes2ROI_mni305.csv'
+            standard_file = self.output / 'ieeg_recon' / 'module4' / 'electrodes2ROI_mni305_freesurfer.csv'
             atlas_path = Path(self.freeSurfer) / 'subjects' / 'fsaverage'
         elif standard_space == 'mni152':
-            standard_file = self.output / 'ieeg_recon' / 'module4' / 'electrodes2ROI_mni152.csv'
+            standard_file = self.output / 'ieeg_recon' / 'module4' / 'electrodes2ROI_mni152_freesurfer.csv'
             atlas_path = Path(self.freeSurfer) / 'subjects' / 'cvs_avg35_inMNI152'
 
         # Load template spaces
