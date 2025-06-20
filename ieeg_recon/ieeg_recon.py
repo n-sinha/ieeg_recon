@@ -15,6 +15,8 @@ from nilearn import plotting as niplot
 from matplotlib.colors import LinearSegmentedColormap
 import plotly.graph_objects as go
 import plotly.express as px
+import shutil
+from IPython import embed
 
 #%% 
 class IEEGRecon:
@@ -59,6 +61,8 @@ class IEEGRecon:
             self.fslLoc = os.getenv('FSL_DIR')
             self.itksnap = os.getenv('ITKSNAP_DIR')
             self.freeSurfer = os.getenv('FREESURFER_HOME')
+            self.antsLoc = os.getenv('ANTSPATH')
+
             # Allow freesurfer_dir parameter to override environment variable
             self.freeSurferDir = freesurfer_dir if freesurfer_dir is not None else os.getenv('SUBJECTS_DIR')
             
@@ -77,7 +81,7 @@ class IEEGRecon:
         except Exception as e:
             print(f"Warning: Environment setup error - {str(e)}")
             print("Using default None values for paths")
-            self.fslLoc = self.itksnap = self.freeSurfer = self.freeSurferDir = None
+            self.fslLoc = self.itksnap = self.freeSurfer = self.freeSurferDir = self.antsLoc = None
 
     def module1(self):
         """
@@ -362,8 +366,8 @@ class IEEGRecon:
         
         # Print summary if channels were saved
         if save_channels:
-            print(f"✅ Individual electrode channels saved to: {output_dir / 'channels'}")
-            print(f"   Created {len(electrodes_mm)} individual channel files")
+            print(f"Individual electrode channels saved to: {output_dir / 'channels'}")
+            print(f"Created {len(electrodes_mm)} individual channel files")
 
         # Save electrode map
         nib.save(
@@ -849,6 +853,251 @@ class IEEGRecon:
 
     def module4(self, skip_existing=False):
         """
+        Module4: Transform electrode coordinates to MNI152 spaces
+
+        Args:
+            skip_existing (bool): If True, skip processing if output files exist
+        
+        Returns:
+            dict: Paths to output files
+        """
+
+        output_dir = Path(self.output) / 'ieeg_recon' / 'module4'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Define output file locations
+        file_locations = {
+            'electrodes2ROI_mni': output_dir / 'electrodes2ROI_mni.csv',
+            'mri_mni152': output_dir / 'mri_mni152.nii.gz',
+            'electrodes_in_mri': output_dir / 'electrodes_inMRI_mni.nii.gz'
+        }
+
+        # Check if files exist and skip if requested
+        if skip_existing and all(path.exists() for path in file_locations.values()):
+            return file_locations
+        
+        # Load electrode data from module3
+        recon_native = self.output / 'ieeg_recon' / 'module3' / 'electrodes2ROI.csv'
+        electrodes2ROI = pd.read_csv(recon_native)
+
+        # Use pre-implant MRI directly
+        mri_path = self.preImplantMRI
+
+        # MNI152 template path (using FreeSurfer templates)
+        mni152_template = Path(self.freeSurfer) / 'subjects' / 'cvs_avg35_inMNI152' / 'mri' / 'T1.mgz'
+        
+        if not mni152_template.exists():
+            raise FileNotFoundError(f"MNI152 template not found: {mni152_template}")
+        
+        print(f"Processing {len(electrodes2ROI)} electrodes using ANTs...")
+
+        # Step 1: Use brain-extracted image from FreeSurfer directory
+        print("Step 1: Using brain-extracted image from FreeSurfer...")
+        brain_extracted_path = Path(self.freeSurferDir) / 'mri' / 'brain.mgz'
+        
+        if not brain_extracted_path.exists():
+            raise FileNotFoundError(f"Brain-extracted image not found: {brain_extracted_path}")
+        
+        # Convert .mgz files to .nii.gz for better ANTs compatibility
+        brain_extracted_nii = output_dir / 'brain_extracted.nii.gz'
+        mni152_template_nii = output_dir / 'mni152_template.nii.gz'
+        
+        print("Converting .mgz files to .nii.gz format...")
+        subprocess.run(['mri_convert', str(brain_extracted_path), str(brain_extracted_nii)], check=True)
+        subprocess.run(['mri_convert', str(mni152_template), str(mni152_template_nii)], check=True)
+        
+        # Step 2: ANTs registration to MNI space
+        print("Step 2: ANTs registration to MNI space...")
+        registration_prefix = output_dir / 'T1_to_MNI152'
+
+        # Check if all required ANTs registration files exist
+        required_files = [
+            Path(str(registration_prefix) + '1Warp.nii.gz'),
+            Path(str(registration_prefix) + '1InverseWarp.nii.gz'),
+            Path(str(registration_prefix) + '0GenericAffine.mat'), 
+            Path(str(registration_prefix) + '_Warped.nii.gz'),
+            Path(str(registration_prefix) + '_InverseWarped.nii.gz')
+        ]
+        
+        if all(path.exists() for path in required_files):
+            print("Registration already exists, skipping...")
+        else:
+            subprocess.run([os.path.join(self.antsLoc, 'antsRegistration'),
+                '--dimensionality', '3',
+                '--float', '0',
+                '--output', f'[{registration_prefix},{registration_prefix}_Warped.nii.gz,{registration_prefix}_InverseWarped.nii.gz]',
+                '--interpolation', 'Linear',
+                '--winsorize-image-intensities', '[0.005,0.995]',
+                '--use-histogram-matching', '0',
+                '--initial-moving-transform', f'[{mni152_template_nii},{brain_extracted_nii},1]',
+                '--transform', 'Rigid[0.1]',
+                '--metric', f'MI[{mni152_template_nii},{brain_extracted_nii},1,32,Regular,0.25]',
+                '--convergence', '[1000x500x250x100,1e-6,10]',
+                '--shrink-factors', '8x4x2x1',
+                '--smoothing-sigmas', '3x2x1x0vox',
+                '--transform', 'Affine[0.1]',
+                '--metric', f'MI[{mni152_template_nii},{brain_extracted_nii},1,32,Regular,0.25]',
+                '--convergence', '[1000x500x250x100,1e-6,10]',
+                '--shrink-factors', '8x4x2x1',
+                '--smoothing-sigmas', '3x2x1x0vox',
+                '--transform', 'SyN[0.1,3,0]',
+                '--metric', f'CC[{mni152_template_nii},{brain_extracted_nii},1,4]',
+                '--convergence', '[100x70x50x20,1e-6,10]',
+                '--shrink-factors', '6x4x2x1',
+                '--smoothing-sigmas', '3x2x1x0vox'
+            ], check=True)
+
+        # Step 3: Transform MRI to MNI space
+        print("Step 3: Transform MRI to MNI space...")
+        subprocess.run([os.path.join(self.antsLoc, 'antsApplyTransforms'),
+            '--dimensionality', '3',
+            '--input', str(mri_path),
+            '--reference-image', str(mni152_template_nii),
+            '--output', str(file_locations['mri_mni152']),
+            '--transform', f'{registration_prefix}1Warp.nii.gz',
+            '--transform', f'{registration_prefix}0GenericAffine.mat',
+            '--interpolation', 'Linear'
+        ], check=True)
+
+        # Step 4: Transform each channel to MNI space in a loop
+        # get all channels from module2 channels directory
+        channels_dir = self.output / 'ieeg_recon' / 'module2' / 'channels'
+        if not channels_dir.exists():
+            self._create_electrode_spheres(channels_dir.parent, save_channels=True)
+
+        channels_dir_mni = output_dir / 'channels_mni'
+        channels_dir_mni.mkdir(parents=True, exist_ok=True)
+        channels = [f.name for f in channels_dir.glob('*.nii.gz')]
+        
+        # Load MNI152 template for coordinate conversion
+        mni152_img = nib.load(mni152_template_nii)
+
+        mni152_template = nib.load(mni152_template)
+        xform_mni152_tk_ras = mni152_template.header.get_vox2ras_tkr()
+        
+        # List to store center of mass data for each channel
+        channel_centers = []
+        
+        for channel in channels:
+            # load channel
+            channel_path = channels_dir / channel
+            channel_path_mni = channels_dir_mni / channel
+            channel_name = channel.split('.')[0].split('_')[1]
+            
+            # transform channel to MNI space
+            subprocess.run([os.path.join(self.antsLoc, 'antsApplyTransforms'),
+                '--dimensionality', '3',
+                '--input', str(channel_path),
+                '--reference-image', str(mni152_template_nii),
+                '--output', str(channel_path_mni),
+                '--transform', f'{registration_prefix}1Warp.nii.gz',
+                '--transform', f'{registration_prefix}0GenericAffine.mat',
+                '--interpolation', 'NearestNeighbor'
+            ], check=True)
+            
+            # get the coordinates of the channel in MNI space 
+            channel_data_mni = nib.load(channel_path_mni).get_fdata()
+            
+            # Find all voxel coordinates where the channel exists (value > 0)
+            channel_voxels = np.where(channel_data_mni > 0)
+            channel_voxels = np.array(channel_voxels).T  # Convert to Nx3 array
+            
+            center_voxel = np.mean(channel_voxels, axis=0)
+                
+            # Convert center of mass from voxel to mm space
+            center_mm = nib.affines.apply_affine(mni152_img.affine, center_voxel)
+
+            center_surfmm = nib.affines.apply_affine(xform_mni152_tk_ras, center_voxel)
+                
+            # Store the center of mass data
+            channel_centers.append({
+                'labels': channel_name,
+                'mm_x': center_mm[0],
+                'mm_y': center_mm[1], 
+                'mm_z': center_mm[2],
+                'surfmm_x': center_surfmm[0],
+                'surfmm_y': center_surfmm[1],
+                'surfmm_z': center_surfmm[2],
+                'vox_x': int(center_voxel[0]),
+                'vox_y': int(center_voxel[1]),
+                'vox_z': int(center_voxel[2]),
+                'roi': electrodes2ROI.loc[electrodes2ROI['labels'] == channel_name, 'roi'].values[0],
+                'roiNum': electrodes2ROI.loc[electrodes2ROI['labels'] == channel_name, 'roiNum'].values[0]
+                })
+          
+        # Convert to DataFrame
+        channel_centers_df = pd.DataFrame(channel_centers)
+
+        # sort labels in channel_centers_df as in  labels in electrodes2ROI 
+        channel_centers_df = channel_centers_df.set_index('labels').reindex(electrodes2ROI['labels']).reset_index()
+
+        # Save output
+        channel_centers_df.to_csv(file_locations['electrodes2ROI_mni'], index=False)
+
+        # Clean up temporary files and channels_dir_mni directory
+        print("Cleaning up temporary files...")
+        temp_files = [
+            brain_extracted_nii,
+            mni152_template_nii
+        ]
+                
+        for temp_file in temp_files:
+            if temp_file.exists():
+                temp_file.unlink()
+        
+        # Clean up channels_dir_mni directory and all its contents
+        if channels_dir_mni.exists():
+            shutil.rmtree(channels_dir_mni)
+        
+        print("MNI transformation complete!")
+
+        # Step 5: Create electrode map in MRI space
+        print("Step 5: Create electrode map in MRI space...")
+
+        mri_mni152 = nib.load(file_locations['mri_mni152'])
+        mri_mni152_data = mri_mni152.get_fdata()
+        mri_mni152_affine = mri_mni152.affine
+
+        # Create blank image
+        blank_data = np.zeros_like(mri_mni152_data)
+        vox_coords = np.array(np.where(blank_data == 0)).T
+
+        # Convert to world coordinates
+        vox_homog = np.hstack((vox_coords, np.ones((vox_coords.shape[0], 1))))
+        world_coords = np.dot(mri_mni152_affine, vox_homog.T).T[:, :3]
+
+        # Load electrode coordinates
+        electrodes_mm = pd.read_csv(file_locations['electrodes2ROI_mni'])
+        electrode_names = electrodes_mm['labels'].values
+        electrodes_mm = electrodes_mm.iloc[:, 1:4].values
+
+        # Create electrode map
+        electrode_data = blank_data.copy()
+        
+        # Create KDTree for efficient nearest neighbor search
+        tree = cKDTree(world_coords)
+
+        # For each electrode, find all points within the sphere radius
+        sphere_radius = 2  # 2mm radius for each electrode sphere
+
+        for i, electrode_pos in enumerate(electrodes_mm,1):
+            # Find all points within sphere_radius of this electrode
+            indices = tree.query_ball_point(electrode_pos, sphere_radius)
+            # Place electrode label at all points within the sphere
+            for idx in indices:
+                coord = vox_coords[idx]
+                electrode_data[tuple(coord)] = i
+        
+        # Save electrode map
+        nib.save(
+            nib.Nifti1Image(electrode_data, mri_mni152_affine),
+            file_locations['electrodes_in_mri']
+        )
+
+        return file_locations
+
+    def module4_fast(self, skip_existing=False):
+        """
         Module4: Transform electrode coordinates to MNI305 and MNI152 spaces
         
         Args:
@@ -963,7 +1212,7 @@ class IEEGRecon:
             'roiNum': electrodes2ROI['roiNum']
         })
         electrodes2ROI_mni152.to_csv(file_locations['electrodes2ROI_mni152'], index=False)
-
+        
         return file_locations
 
     def _read_talairach_xfm(self, fname):
@@ -999,13 +1248,13 @@ class IEEGRecon:
         Module4: Snap electrodes to atlas ROIs in standard space
         
         Args:
-            standard_space (str): Standard space to use - must be either 'mni305' or 'mni152'
+            standard_space (str): Standard space to use - must be either 'mni305' or 'mni152' or 'mni152_ants'
             atlas (str/Path): Path to atlas NIFTI file
             atlas_lut (str/Path): Path to lookup table CSV/txt file
             diameter (float): Maximum distance in mm for electrode-to-ROI mapping (default: 2.5)
             
         Raises:
-            ValueError: If standard_space is not 'mni305' or 'mni152'
+            ValueError: If standard_space is not 'mni305' or 'mni152' or 'mni152_ants'
         """
         # Validate standard space input
         if standard_space.lower() not in ['mni305', 'mni152']:
@@ -1101,6 +1350,7 @@ class IEEGRecon:
 
         return corrected_file
 
+
 #%%
 def run_pipeline(pre_implant_mri, 
                 post_implant_ct, 
@@ -1176,26 +1426,27 @@ def run_pipeline(pre_implant_mri,
     if '4' in modules:
         print("Running Module 4...")
         file_locations_module4 = recon.module4(skip_existing=skip_existing)
+        file_locations_module4_fast = recon.module4_fast(skip_existing=skip_existing)
         atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
         file_locations_module4_mni152 = recon.module4_snap_to_atlas(standard_space='mni152',
-                                                          atlas='aparc+aseg.mgz',
-                                                          atlas_lut=atlas_lut,
-                                                          diameter=2.5)
+                                                                   atlas='aparc+aseg.mgz',
+                                                                   atlas_lut=atlas_lut,
+                                                                   diameter=2.5)
         file_locations_module4_mni305 = recon.module4_snap_to_atlas(standard_space='mni305',
-                                                          atlas='aparc+aseg.mgz',
-                                                          atlas_lut=atlas_lut,
-                                                          diameter=2.5)
+                                                                   atlas='aparc+aseg.mgz',
+                                                                   atlas_lut=atlas_lut,
+                                                                   diameter=2.5)
+
         print(f"Module 4 output files:")
-        print(f"MNI152: {file_locations_module4_mni152}")
-        print(f"MNI305: {file_locations_module4_mni305}")
 
         # make a dictionary of the file locations for each module
         file_locations = {
             'module2': file_locations_module2,
             'module3': file_locations_module3,
             'module4': file_locations_module4,
+            'module4_fast': file_locations_module4_fast,
             'module4_mni152': file_locations_module4_mni152,
-            'module4_mni305': file_locations_module4_mni305
+            'module4_mni305': file_locations_module4_mni305,
         }
     
     return file_locations
@@ -1227,7 +1478,7 @@ if __name__ == "__main__":
         freesurfer_dir=freesurfer_dir,
         modules=['1', '2', '3', '4'],
         skip_existing=False,
-        save_channels=True,
+        save_channels=False,
         reg_type='gc_noCTthereshold',  # Default registration type
         qa_viewer='niplot'  # Default viewer
     )
