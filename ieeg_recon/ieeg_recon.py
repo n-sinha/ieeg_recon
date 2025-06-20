@@ -17,6 +17,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import shutil
 from IPython import embed
+from timeit import default_timer as timer
 
 #%% 
 class IEEGRecon:
@@ -922,6 +923,14 @@ class IEEGRecon:
         if all(path.exists() for path in required_files):
             print("Registration already exists, skipping...")
         else:
+            # Set the number of threads for ANTs to use
+            # Using all available cores for maximum speed
+            # We will pass this to the subprocess environment
+            num_threads = os.cpu_count()
+            ants_env = os.environ.copy()
+            ants_env["ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS"] = str(num_threads)
+            print(f"Running ANTs registration with {num_threads} threads...")
+
             subprocess.run([os.path.join(self.antsLoc, 'antsRegistration'),
                 '--dimensionality', '3',
                 '--float', '0',
@@ -945,7 +954,7 @@ class IEEGRecon:
                 '--convergence', '[100x70x50x20,1e-6,10]',
                 '--shrink-factors', '6x4x2x1',
                 '--smoothing-sigmas', '3x2x1x0vox'
-            ], check=True)
+            ], check=True, env=ants_env)
 
         # Step 3: Transform MRI to MNI space
         print("Step 3: Transform MRI to MNI space...")
@@ -1396,10 +1405,14 @@ def run_pipeline(pre_implant_mri,
     
     if '1' in modules:
         print("Running Module 1...")
+        start_time = timer()
         recon.module1()
+        end_time = timer()
+        print(f"Module 1 completed in {end_time - start_time:.2f} seconds.")
     
     if '2' in modules:
         print("Running Module 2...")
+        start_time = timer()
         file_locations_module2 = recon.module2(reg_type, skip_existing=skip_existing, save_channels=save_channels)
         
         print("Module 2 output files:")
@@ -1407,9 +1420,12 @@ def run_pipeline(pre_implant_mri,
             print(f"{name}: {path}")
         
         recon.module2_QualityAssurance(file_locations_module2, qa_viewer)
+        end_time = timer()
+        print(f"Module 2 completed in {end_time - start_time:.2f} seconds.")
 
     if '3' in modules:
         print("Running Module 3...")
+        start_time = timer()
         atlas = freesurfer_dir / 'mri' / 'aparc+aseg.mgz'
         atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
         file_locations_module3 = recon.module3(atlas, atlas_lut, diameter=2.5, skip_existing=skip_existing)
@@ -1418,9 +1434,12 @@ def run_pipeline(pre_implant_mri,
         print(f"electrodes2ROI: {file_locations_module3}")
         
         recon.module3_QualityAssurance(file_locations_module3)
+        end_time = timer()
+        print(f"Module 3 completed in {end_time - start_time:.2f} seconds.")
 
     if '4' in modules:
         print("Running Module 4...")
+        start_time = timer()
         file_locations_module4 = recon.module4(skip_existing=skip_existing)
         file_locations_module4_fast = recon.module4_fast(skip_existing=skip_existing)
         atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
@@ -1432,6 +1451,8 @@ def run_pipeline(pre_implant_mri,
                                                                    atlas='aparc+aseg.mgz',
                                                                    atlas_lut=atlas_lut,
                                                                    diameter=2.5)
+        end_time = timer()
+        print(f"Module 4 completed in {end_time - start_time:.2f} seconds.")
 
         print(f"Module 4 output files:")
 
