@@ -862,8 +862,11 @@ class IEEGRecon:
         Returns:
             dict: Paths to output files
         """
-
+        
         output_dir = Path(self.output) / 'ieeg_recon' / 'module4'
+        # delete output_dir and then make it again
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # Define output file locations
@@ -985,6 +988,7 @@ class IEEGRecon:
         channels_dir = self.output / 'ieeg_recon' / 'module2' / 'channels'
         if not channels_dir.exists():
             self._create_electrode_spheres(channels_dir.parent, save_channels=True)
+            self._create_itksnap_workspace(channels_dir.parent)
 
         channels_dir_mni = output_dir / 'channels_mni'
         channels_dir_mni.mkdir(parents=True, exist_ok=True)
@@ -1453,16 +1457,6 @@ def run_pipeline(pre_implant_mri,
         print("Running Module 4...")
         start_time = timer()
         file_locations_module4 = recon.module4(skip_existing=skip_existing)
-        file_locations_module4_fast = recon.module4_fast(skip_existing=skip_existing)
-        atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
-        file_locations_module4_mni152 = recon.module4_snap_to_atlas(standard_space='mni152',
-                                                                   atlas='aparc+aseg.mgz',
-                                                                   atlas_lut=atlas_lut,
-                                                                   diameter=2.5)
-        file_locations_module4_mni305 = recon.module4_snap_to_atlas(standard_space='mni305',
-                                                                   atlas='aparc+aseg.mgz',
-                                                                   atlas_lut=atlas_lut,
-                                                                   diameter=2.5)
         end_time = timer()
         print(f"Module 4 completed in {end_time - start_time:.2f} seconds.")
 
@@ -1472,10 +1466,7 @@ def run_pipeline(pre_implant_mri,
         file_locations = {
             'module2': file_locations_module2,
             'module3': file_locations_module3,
-            'module4': file_locations_module4,
-            'module4_fast': file_locations_module4_fast,
-            'module4_mni152': file_locations_module4_mni152,
-            'module4_mni305': file_locations_module4_mni305,
+            'module4': file_locations_module4
         }
     
     return file_locations
@@ -1484,13 +1475,14 @@ def run_pipeline(pre_implant_mri,
 if __name__ == "__main__":
     # Example usage - replace these values with your actual file paths
     project_path = Path(__file__).parent.parent
+
+    data_path = Path('/Users/nishant/Dropbox/Sinha/Lab/Research/iEEG_recon_local/data/BIDS')
+    subject = 'sub-RID0031'
    
     # Set paths for the selected subject
-    pre_implant_mri = project_path / 'data' / 'sub-Case001' / 'derivatives' / 'freesurfer' / 'mri' / 'T1.nii.gz'
-    post_implant_ct = project_path / 'data' / 'sub-Case001' / 'ses-postimplant' / 'ct' / 'sub-Case001_ses-postimplant_ct.nii.gz'
-    ct_electrodes = project_path / 'data' / 'sub-Case001' / 'ses-postimplant' / 'ieeg' / 'sub-Case001_ses-postimplant_ct.txt'
-    output_dir = project_path / 'data' / 'sub-Case001' / 'derivatives'
-    freesurfer_dir = project_path / 'data' / 'sub-Case001' / 'derivatives' / 'freesurfer'
+    pre_implant_mri = data_path / subject / 'derivatives' / 'freesurfer' / 'mri' / 'T1.nii.gz'
+    output_dir =  data_path / subject / 'derivatives' 
+    freesurfer_dir = data_path / subject / 'derivatives' / 'freesurfer'
    
     # Set config path (defaults to .env in same directory as script)
     env_path = project_path / '.env'
@@ -1500,12 +1492,12 @@ if __name__ == "__main__":
     # Run pipeline with default settings
     run_pipeline(
         pre_implant_mri=pre_implant_mri,
-        post_implant_ct=post_implant_ct,
-        ct_electrodes=ct_electrodes,
+        post_implant_ct=None,
+        ct_electrodes=None,
         output_dir=output_dir,
         env_path=env_path,
         freesurfer_dir=freesurfer_dir,
-        modules=['1', '2', '3', '4'],
+        modules=['4'],
         skip_existing=False,
         save_channels=False,
         reg_type='gc_noCTthereshold',  # Default registration type
