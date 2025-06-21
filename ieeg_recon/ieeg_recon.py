@@ -1505,14 +1505,9 @@ if __name__ == "__main__":
         output_dir=output_dir,
         env_path=env_path,
         freesurfer_dir=freesurfer_dir,
-<<<<<<< HEAD
-        modules=['4'],
-        skip_existing=False,
-=======
         modules=['1', '2', '3', '4'],
         skip_existing=False,
         save_channels=False,
->>>>>>> production
         reg_type='gc_noCTthereshold',  # Default registration type
         qa_viewer='niplot'  # Default viewer
     )
