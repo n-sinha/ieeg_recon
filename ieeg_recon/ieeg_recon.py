@@ -926,14 +926,6 @@ class IEEGRecon:
         if all(path.exists() for path in required_files):
             print("Registration already exists, skipping...")
         else:
-            # Set the number of threads for ANTs to use
-            # Using all available cores for maximum speed
-            # We will pass this to the subprocess environment
-            num_threads = os.cpu_count()
-            ants_env = os.environ.copy()
-            ants_env["ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS"] = str(num_threads)
-            print(f"Running ANTs registration with {num_threads} threads...")
-
             subprocess.run([os.path.join(self.antsLoc, 'antsRegistration'),
                 '--dimensionality', '3',
                 '--float', '0',
@@ -957,7 +949,7 @@ class IEEGRecon:
                 '--convergence', '[100x70x50x20,1e-6,10]',
                 '--shrink-factors', '6x4x2x1',
                 '--smoothing-sigmas', '3x2x1x0vox'
-            ], check=True, env=ants_env)
+            ], check=True)
 
         # Step 3: Transform MRI to MNI space
         print("Step 3: Transform MRI to MNI space...")
