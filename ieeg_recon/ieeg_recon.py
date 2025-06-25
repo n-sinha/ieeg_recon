@@ -923,14 +923,6 @@ class IEEGRecon:
         if all(path.exists() for path in required_files):
             print("Registration already exists, skipping...")
         else:
-            # Set the number of threads for ANTs to use
-            # Using all available cores for maximum speed
-            # We will pass this to the subprocess environment
-            num_threads = os.cpu_count()
-            ants_env = os.environ.copy()
-            ants_env["ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS"] = str(num_threads)
-            print(f"Running ANTs registration with {num_threads} threads...")
-
             subprocess.run([os.path.join(self.antsLoc, 'antsRegistration'),
                 '--dimensionality', '3',
                 '--float', '0',
@@ -954,7 +946,7 @@ class IEEGRecon:
                 '--convergence', '[100x70x50x20,1e-6,10]',
                 '--shrink-factors', '6x4x2x1',
                 '--smoothing-sigmas', '3x2x1x0vox'
-            ], check=True, env=ants_env)
+            ], check=True)
 
         # Step 3: Transform MRI to MNI space
         print("Step 3: Transform MRI to MNI space...")
@@ -1115,7 +1107,7 @@ class IEEGRecon:
 
     def module4_fast(self, skip_existing=False):
         """
-        Module4: Transform electrode coordinates to MNI305 and MNI152 spaces
+        Module4: Transform electrode coordinates to MNI305 and MNI152 spaces [for fast processing and visualization only]
         
         Args:
             skip_existing (bool): If True, skip processing if output files exist
@@ -1262,7 +1254,7 @@ class IEEGRecon:
                               atlas_lut='desikanKilliany.csv', 
                               diameter=2.5) -> Path:
         """
-        Module4: Snap electrodes to atlas ROIs in standard space
+        Module4: Snap electrodes to atlas ROIs in standard space [DEPRECATED: use module4 instead ants registration is more accurate]
         
         Args:
             standard_space (str): Standard space to use - must be either 'mni305' or 'mni152' or 'mni152_ants'
@@ -1452,17 +1444,8 @@ def run_pipeline(pre_implant_mri,
     if '4' in modules:
         print("Running Module 4...")
         start_time = timer()
-        file_locations_module4 = recon.module4(skip_existing=skip_existing)
         file_locations_module4_fast = recon.module4_fast(skip_existing=skip_existing)
-        atlas_lut = project_path / 'doc' / 'atlasLUT' / 'desikanKilliany.csv'
-        file_locations_module4_mni152 = recon.module4_snap_to_atlas(standard_space='mni152',
-                                                                   atlas='aparc+aseg.mgz',
-                                                                   atlas_lut=atlas_lut,
-                                                                   diameter=2.5)
-        file_locations_module4_mni305 = recon.module4_snap_to_atlas(standard_space='mni305',
-                                                                   atlas='aparc+aseg.mgz',
-                                                                   atlas_lut=atlas_lut,
-                                                                   diameter=2.5)
+        file_locations_module4 = recon.module4(skip_existing=skip_existing)
         end_time = timer()
         print(f"Module 4 completed in {end_time - start_time:.2f} seconds.")
 
@@ -1474,8 +1457,6 @@ def run_pipeline(pre_implant_mri,
             'module3': file_locations_module3,
             'module4': file_locations_module4,
             'module4_fast': file_locations_module4_fast,
-            'module4_mni152': file_locations_module4_mni152,
-            'module4_mni305': file_locations_module4_mni305,
         }
     
     return file_locations
