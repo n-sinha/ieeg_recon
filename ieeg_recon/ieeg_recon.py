@@ -681,6 +681,12 @@ class IEEGRecon:
         lh_pial_verts, lh_pial_faces = read_geometry(Path(self.freeSurferDir) / 'surf/lh.pial')
         rh_pial_verts, rh_pial_faces = read_geometry(Path(self.freeSurferDir) / 'surf/rh.pial')
 
+        # FIX: Convert to native endianness
+        lh_pial_verts = np.asarray(lh_pial_verts, dtype=np.float64)
+        lh_pial_faces = np.asarray(lh_pial_faces, dtype=np.int64)
+        rh_pial_verts = np.asarray(rh_pial_verts, dtype=np.float64)
+        rh_pial_faces = np.asarray(rh_pial_faces, dtype=np.int64)
+
         # Create interactive 3D visualization using plotly
         fig = go.Figure()
 
@@ -845,7 +851,7 @@ class IEEGRecon:
             showlegend=False,
             updatemenus=updatemenus
         )
-
+        
         # Save the plot as HTML for interactive viewing
         fig.write_html(str(output_dir / 'electrode_visualization.html'))
 
