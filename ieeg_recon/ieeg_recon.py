@@ -61,7 +61,7 @@ class IEEGRecon:
             # Set paths from environment variables
             self.fslLoc = os.getenv('FSL_DIR')
             self.itksnap = os.getenv('ITKSNAP_DIR')
-            self.freeSurfer = os.getenv('FREESURFER_HOME')
+            self.freeSurfer =  self.root_dir / 'doc' / 'freesurfer'
             self.antsLoc = os.getenv('ANTSPATH')
 
             # Allow freesurfer_dir parameter to override environment variable
